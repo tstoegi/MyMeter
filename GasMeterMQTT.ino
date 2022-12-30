@@ -1,5 +1,5 @@
 /***************************************************************************
-  Gas Meter Sensor via mqtt
+  Gas Meter Sensor via mqtt (default is variant B!)
   + Wemos D1 Mini
   
   *** Variant A: With inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
@@ -50,7 +50,7 @@
 #define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
-#define USE_MICROWAKEUPPER_SHIELD true // !!! change this to true if you want Variant B !!!
+#define USE_MICROWAKEUPPER_SHIELD true // !!! change this to false if you want Variant A !!!
 #endif
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
