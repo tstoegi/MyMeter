@@ -45,7 +45,9 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
+
 #include <ArduinoOTA.h>
+#define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
 #define USE_MICROWAKEUPPER_SHIELD true
@@ -317,7 +319,7 @@ void setupOTA() {
   Serial.println(clientID);
   ArduinoOTA.setHostname(clientID.c_str());
 
-  ArduinoOTA.setPassword("esp8266");
+  ArduinoOTA.setPassword(OTA_CLIENT_PASSWORD);
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
