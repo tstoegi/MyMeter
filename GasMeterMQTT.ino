@@ -50,13 +50,13 @@
 #define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
-#define USE_MICROWAKEUPPER_SHIELD true
+#define USE_MICROWAKEUPPER_SHIELD true // !!! change this to true if you want Variant B !!!
 #endif
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
 #include <MicroWakeupper.h>
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
-bool launchedByMicroWakeupperEvent = false; // !!! change this to true if you want Variant B !!!
+bool launchedByMicroWakeupperEvent = false; 
 #endif
 
 
