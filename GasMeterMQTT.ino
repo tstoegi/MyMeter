@@ -1,10 +1,43 @@
 /***************************************************************************
-  Gas Meter Sensor (LJ12A3-4-Z/BX 5V) via mqtt
+  Gas Meter Sensor via mqtt
   + Wemos D1 Mini
-  + Voltage divider: (Sensor BK)->5V---R10K---A0---R22K---GND
+  
+  *** Variant A: With inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
+  How it works: 
+  For each sensor signal change, the firmware will sent one mqtt message to your broker/Nodered - you can count each message and/or e.g. forward it to Grafana aso
 
-  2022 @tstoegi
-  Tobias Stöger
+  + Powered via USB
+  + Voltage divider: (Sensor BK)->5V---R10K---A0---R22K---GND
+  
+  *** Variant B: With reed switch connected on a MicroWakeupper battery shield (stacked to a Wemos D1 mini)
+
+  How it works:
+  Your gas meter has an internal magnet that is turing around - connect a reed switch and you are able to "count" one turn (1 = 0,01 m3).
+  The MicroWakeupper shield is turing your Wemos on if the reed is switched on (NO switch - you use a NC switched alternatively - change the on board switch apropiate on the shield).
+  The firmware will sent one mqtt message to your broker/Nodered - you can count each message and/or e.g. forward it to Grafana aso
+
+  (Hardware part)
+  + Cut J1 carefully on the backside of your MicroWakeupper shield - this will power on/off the Wemos
+  + Connect a reed switch to the MicroWakeupper to SWITCH IN/OUT
+  + Stack the MicroWakeupper shield onto your Wemos
+  + Connect/power the MicroWakeupper battery shield  with a lipo - recommended: a protected one
+  
+  (Software part)
+  + Install the MicroWakeupper library to your Arduino SDK https://github.com/tstoegi/MicroWakeupper
+  + Below: Set USE_MICROWAKEUPPER_SHIELD from false to true
+  + Connected the Wemos via USB and upload the code (without the MicroWakeupper shield stacked or the FLASH button pressed during upload) 
+  + Warning: As long as you power the Wemos via USB it will not turn off
+  + Warning: OTA will not work on battery with device off
+  
+  faq:
+  Q: Where can I buy the MicroWakeupper battery shield?
+  A: My store: https://www.tindie.com/stores/moreiolabs/
+  
+  todo:
+  + Store the total amount locally somewhere (e.g. eeprom)
+
+  (c) 2022, 2023 @tstoegi, Tobias Stöger
+  
  ***************************************************************************/
 
 #include <Arduino.h>
@@ -14,15 +47,28 @@
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 
-#include <Credentials.h>
-/* Credentials.h should look like
-  #define mySSID "yourSSID"
-  #define myPASSWORD "1234567890"
-*/
+#ifndef USE_MICROWAKEUPPER_SHIELD
+#define USE_MICROWAKEUPPER_SHIELD true
+#endif
+
+#ifdef USE_MICROWAKEUPPER_SHIELD
+#include <MicroWakeupper.h>
+MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
+bool launchedByMicroWakeupperEvent = false; // !!! change this to true if you want Variant B !!!
+#endif
+
 
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
+
+#include <Credentials.h>
+/* Credentials.h should look like
+  #define mySSID "yourSSID"
+  #define myPASSWORD "1234567890"
+
+  #define below value "..." aso...
+*/
 
 //mqtt_server
 const char* mqtt_server = myMQTTBroker_Server;
@@ -38,13 +84,21 @@ const char* mqtt_pass = myMQTTBroker_Pass_ESP_gasmeter;
 String mqttTopic_out = "haus/gasmeter";
 String clientId = "gasmeter_";
 
-const float m3_oneround = 0.01;  // one complete round 0.01m3 (or 10 liter)
-float m3_total = 0.0;            // total since start
+const float m3_oneround = 0.01;  // one complete round 0.01m3 (or 10 liter of gas)
 
+// todo store locally somewhere
+// float m3_total = 0.0;            // total overall
+
+#ifdef USE_MICROWAKEUPPER_SHIELD
+  // nothing to see here
+#else
+  // inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
 #define SIGNAL_SENSOR A0
 #define SIGNAL_HYST_MIN 450
 #define SIGNAL_HYST_MAX 550
 #define SIGNAL_CHECK_EVERY_SEC 1
+
+#endif
 
 
 enum State {
@@ -53,14 +107,15 @@ enum State {
   state_setupOTA = 2,
   state_setupMqtt = 3,
   state_checkSensorData = 4,
-  state_sendMqtt = 5
+  state_sendMqtt = 5,
+  state_turingOff = 6
 } nextState;
 
 int nextStateDelaySeconds = 0;
 
 void setup() {
   Serial.begin(115200);
-  delay(3000);
+  delay(100);
   Serial.println("\n Gas Meter Monitoring");
 
   nextState = state_startup;
@@ -94,6 +149,16 @@ void doNextState(State aNewState) {
 
         pinMode(LED_BUILTIN, OUTPUT);
 
+#ifdef USE_MICROWAKEUPPER_SHIELD
+        Serial.println("USE_MICROWAKEUPPER_SHIELD true");
+        microWakeupper.begin();  // For correct initialisation
+        if (microWakeupper.resetedBySwitch() && microWakeupper.isActive()) {
+          Serial.println("Launched by a MicroWakeupperEvent");
+          launchedByMicroWakeupperEvent = true;
+          microWakeupper.disable();  // Preventing new triggering/resets
+        }
+#endif
+
         setNextState(state_setupWifi);
         break;
       }
@@ -121,6 +186,14 @@ void doNextState(State aNewState) {
     case state_checkSensorData:
       {
         Serial.println("state_checkSensorData");
+
+#ifdef USE_MICROWAKEUPPER_SHIELD
+        if (launchedByMicroWakeupperEvent) {
+          setNextState(state_sendMqtt);
+        } else {
+          setNextState(state_turingOff);
+        }
+#else  // we use a sensor with active-low and inactive-high signal (reverse)
         int adc = analogRead(SIGNAL_SENSOR);
         Serial.println(adc);
 
@@ -129,36 +202,53 @@ void doNextState(State aNewState) {
         digitalWrite(LED_BUILTIN, true);
 
         static bool active = false;
-        if (!active && adc < SIGNAL_HYST_MIN) {
+        if (!active
+            && adc < SIGNAL_HYST_MIN) {
           active = true;
         }
         Serial.println(active ? "Sensor is on" : "Sensor is off");
-
         if (active && adc > SIGNAL_HYST_MAX) {
           active = false;
           Serial.println(active ? "Sensor is on" : "Sensor is off");
           setNextState(state_sendMqtt);
           break;  // done
         }
-
-        digitalWrite(LED_BUILTIN, !active);
-
         setNextState(state_checkSensorData, SIGNAL_CHECK_EVERY_SEC);
+        digitalWrite(LED_BUILTIN, !active);
         break;
+#endif
       }
     case state_sendMqtt:
       {
         Serial.println("state_sendMqtt");
-        m3_total += m3_oneround;
         mqttPublish(String(m3_oneround), "m3used");
-        mqttPublish(String(m3_total), "m3total");
+
+        // todo store locally somewhere
+        // m3_total += m3_oneround;
+        // mqttPublish(String(m3_total), "m3total");
 
         static unsigned long lastMillis = millis();
         unsigned long duration = millis() - lastMillis;
         lastMillis = millis();
         mqttPublish(String(duration), "durationInMillis");
 
+#ifdef USE_MICROWAKEUPPER_SHIELD
+        setNextState(state_turingOff);
+#else
         setNextState(state_checkSensorData);
+#endif
+        break;
+      }
+    case state_turingOff:
+      {
+#ifdef USE_MICROWAKEUPPER_SHIELD
+        Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
+        microWakeupper.reenable();
+        delay(1000);
+#else
+        Serial.println("!!! Unsupported state !!!");
+        dealy(1000);
+#endif
         break;
       }
     default:
@@ -258,14 +348,15 @@ void setupOTA() {
 }
 
 void setupMqtt() {
-  // Setting insecure disables the fingerprint verification.
-  //espClient.setInsecure 3();
   if (strlen(mqtt_fprint) > 0) {
     Serial.println("Setting mqtt server fingerprint");
     espClient.setFingerprint(mqtt_fprint);
+  } else {
+    Serial.println("No fingerprint verification for mqtt");
+    espClient.setInsecure();
   }
   mqttClient.setServer(mqtt_server, mqtt_port);
-  //mqttClient.setCallback(mqttCallback);
+  // mqttClient.setCallback(mqttCallback);
 }
 
 void mqttReconnect() {
