@@ -82,7 +82,7 @@ char msg[50];
 
 
 // $$$config$$$
-#define CO_MQTT_BROKER_IP "192.168.4.3" 
+#define CO_MQTT_BROKER_IP "192.168.4.3"
 #define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
 #define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
@@ -417,6 +417,6 @@ void deepSleep() {
   WiFi.forceSleepBegin();
 
   Serial.println("Going into deepSleep now");
-  ESP.deepSleepMax();  //(seconds * 1000000);   // ESP.deepSleep expects microseconds
+  ESP.deepSleepMax();  // around 71 minutes
   delay(200);          // Seems recommended after calling deepSleep
 }
