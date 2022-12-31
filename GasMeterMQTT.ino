@@ -22,7 +22,8 @@
   
   (Software part)
   + Install the MicroWakeupper library to your Arduino SDK https://github.com/tstoegi/MicroWakeupper
-  + Below: Set USE_MICROWAKEUPPER_SHIELD from false to true
+  + Below: Set USE_MICROWAKEUPPER_SHIELD from false to true 
+  + Below: Setup all config data between // $$$config$$$
   + Connected the Wemos via USB and upload the code (without the MicroWakeupper shield stacked or the FLASH button pressed during upload) 
   + Warning: As long as you power the Wemos via USB it will not turn off
   + Warning: OTA will not work on battery with device off
@@ -44,8 +45,6 @@
 #include <PubSubClient.h>
 
 #include <ArduinoOTA.h>
-#define OTA_CLIENT_ID "gasmeter_"
-#define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
 #define USE_MICROWAKEUPPER_SHIELD true  // !!! change this to false if you want Variant A !!!
@@ -61,31 +60,33 @@ WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
 
-#include <Credentials.h>
-/* Credentials.h should look like
-  #define mySSID "yourSSID"
-  #define myPASSWORD "1234567890"
-  
-  #define below value "..." aso...
+#include <Credentials.h>  // located (or create one) in folder "Arduino/libraries/Credentials/"
+/* example
+
+// your wifi
+#define CR_WIFI_SSID        "wifi_ssid"
+#define CR_WIFI_PASSWORD    "wifi_password"
+
+// ota - over the air firmware updates - userid and password of your choise
+#define CR_OTA_GASMETER_CLIENT_ID_PREFIX       "gasmeter_"
+#define CR_OTA_GASMETER_CLIENT_PASSWORD        "0123456789"
+
+// your mqtt server cert fingerprint -> use "" if you want to disable cert checking
+#define CR_MQTT_BROKER_CERT_FINGERPRINT "AA F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 00"
+
+// your mqtt user and password as created on the server side
+#define CR_MQTT_BROKER_GASMETER_USER "gasmeter"
+#define CR_MQTT_BROKER_GASMETER_PASSWORD "0123456789"
+
 */
 
 
-//mqtt_server
-const char* mqtt_server = myMQTTBroker_Server;
-const unsigned int mqtt_port = myMQTTBroker_Port;
-
-const char* mqtt_fprint = myMQTTBroker_Cert_FPrint; // use "" if you want to disable cert check
-
-//mqtt_user
-const char* mqtt_user = myMQTTBroker_User_ESP_gasmeter;
-const char* mqtt_pass = myMQTTBroker_Pass_ESP_gasmeter;
-
-//mqtt_topic
-String mqttTopic_out = "haus/gasmeter";
-
-//mqtt_client_id
-#define MQTT_CLIENT_ID_PREFIX "gasmeter_"
-
+// $$$config$$$
+#define CO_MQTT_BROKER_IP "192.168.4.3" 
+#define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
+#define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
+#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
+// $$$config$$$
 
 const float m3_oneround = 0.01;  // one complete round 0.01m3 (or 10 liter of gas)
 
@@ -111,7 +112,8 @@ enum State {
   state_setupMqtt = 3,
   state_checkSensorData = 4,
   state_sendMqtt = 5,
-  state_turingOff = 6
+  state_turingOff = 6,
+  state_turnedOff = 7
 } nextState;
 
 int nextStateDelaySeconds = 0;
@@ -245,15 +247,25 @@ void doNextState(State aNewState) {
       }
     case state_turingOff:
       {
+        Serial.println("state_turingOff");
+        digitalWrite(LED_BUILTIN, true);  // turn led off
+
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
         microWakeupper.reenable();
         deepSleep();
         delay(1000);
+        setNextState(state_turnedOff);
 #else
         Serial.println("!!! Unsupported state !!!");
         dealy(1000);
 #endif
+        break;
+      }
+    case state_turnedOff:
+      {
+        Serial.println("state_turnedOff");
+        delay(1000);
         break;
       }
     default:
@@ -262,7 +274,7 @@ void doNextState(State aNewState) {
       }
   }
 
-  if (aNewState > state_setupMqtt) {
+  if (aNewState > state_setupMqtt && aNewState < state_turingOff) {
     if (!mqttClient.loop()) {  //needs to be called regularly
       mqttReconnect();
     }
@@ -272,11 +284,10 @@ void doNextState(State aNewState) {
     }
   }
 
-
   delay(100);
 }
 void mqttPublish(String msg, const char* subTopic) {
-  String topicString = mqttTopic_out + "/" + subTopic;
+  String topicString = String(CO_MQTT_GASMETER_TOPIC_PUB) + "/" + subTopic;
   Serial.print(topicString);
   Serial.print(" ");
   Serial.println(msg);
@@ -291,7 +302,7 @@ void setupWifi() {
   // Wait for connection
   int retries = 5;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
-    WiFi.begin(mySSID, myPASSWORD);
+    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
     Serial.print(retries);
     delay(1000);
     int secondsTimeout = 10;
@@ -305,26 +316,26 @@ void setupWifi() {
   }
 
   if (retries == 0) {
-    Serial.println(mySSID);
+    Serial.println(CR_WIFI_SSID);
     Serial.println("Connection failed!");
     return;
   }
 
   Serial.println("");
   Serial.print("Connected to ");
-  Serial.println(mySSID);
+  Serial.println(CR_WIFI_SSID);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
 }
 
 void setupOTA() {
-  String ota_client_id = OTA_CLIENT_ID + WiFi.localIP().toString();
+  String ota_client_id = CR_OTA_GASMETER_CLIENT_ID_PREFIX + WiFi.localIP().toString();
   Serial.print("OTA_CLIENT_ID: ");
   Serial.println(ota_client_id);
 
   ArduinoOTA.setHostname(ota_client_id.c_str());
 
-  ArduinoOTA.setPassword(OTA_CLIENT_PASSWORD);
+  ArduinoOTA.setPassword(CR_OTA_GASMETER_CLIENT_PASSWORD);
 
   ArduinoOTA.onStart([]() {
     Serial.println("Start");
@@ -355,15 +366,15 @@ void setupOTA() {
 }
 
 void setupMqtt() {
-  if (strlen(mqtt_fprint) > 0) {
+  if (strlen(CR_MQTT_BROKER_CERT_FINGERPRINT) > 0) {
     Serial.println("Setting mqtt server fingerprint");
-    espClient.setFingerprint(mqtt_fprint);
+    espClient.setFingerprint(CR_MQTT_BROKER_CERT_FINGERPRINT);
   } else {
     Serial.println("No fingerprint verification for mqtt");
     espClient.setInsecure();
   }
   mqttClient.setBufferSize(512);
-  mqttClient.setServer(mqtt_server, mqtt_port);
+  mqttClient.setServer(CO_MQTT_BROKER_IP, CO_MQTT_BROKER_PORT);
   // mqttClient.setCallback(mqttCallback);
 }
 
@@ -373,12 +384,12 @@ void mqttReconnect() {
     Serial.print("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
-    String clientId = MQTT_CLIENT_ID_PREFIX + WiFi.localIP().toString();
-    Serial.print("MQTT_CLIENT_ID_PREFIX: ");
+    String clientId = CO_MQTT_GASMETER_CLIENT_ID_PREFIX + WiFi.localIP().toString();
+    Serial.print("MQTT_CLIENT_ID: ");
     Serial.println(clientId);
 
     // Attempt to connect
-    if (mqttClient.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
+    if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
       Serial.println("connected");
 
       // mqttClient.subscribe(mqttTopicOut.c_str());
