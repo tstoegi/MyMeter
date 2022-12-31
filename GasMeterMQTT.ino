@@ -50,13 +50,13 @@
 #define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
-#define USE_MICROWAKEUPPER_SHIELD true // !!! change this to false if you want Variant A !!!
+#define USE_MICROWAKEUPPER_SHIELD true  // !!! change this to false if you want Variant A !!!
 #endif
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
 #include <MicroWakeupper.h>
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
-bool launchedByMicroWakeupperEvent = false; 
+bool launchedByMicroWakeupperEvent = false;
 #endif
 
 
@@ -273,7 +273,7 @@ void doNextState(State aNewState) {
   delay(100);
 }
 void mqttPublish(String msg, const char* subTopic) {
-  Serial.print(">> Published message: ");
+  Serial.print(">> Publishing message: ");
   String topicString = mqttTopic_out + "/" + subTopic;
   Serial.print(topicString);
   Serial.print(" ");
@@ -357,6 +357,7 @@ void setupMqtt() {
     Serial.println("No fingerprint verification for mqtt");
     espClient.setInsecure();
   }
+  mqttClient.setBufferSize(512);
   mqttClient.setServer(mqtt_server, mqtt_port);
   // mqttClient.setCallback(mqttCallback);
 }
