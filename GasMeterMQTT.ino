@@ -5,17 +5,15 @@
   *** Variant A: With inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
   How it works: 
   For each sensor signal change, the firmware will sent one mqtt message to your broker/Nodered - you can count each message and/or e.g. forward it to Grafana aso
-
   + Powered via USB
   + Voltage divider: (Sensor BK)->5V---R10K---A0---R22K---GND
   
   *** Variant B: With reed switch connected on a MicroWakeupper battery shield (stacked to a Wemos D1 mini)
-
   How it works:
   Your gas meter has an internal magnet that is turing around - connect a reed switch and you are able to "count" one turn (1 = 0,01 m3).
   The MicroWakeupper shield is turing your Wemos on if the reed is switched on (NO switch - you use a NC switched alternatively - change the on board switch apropiate on the shield).
   The firmware will sent one mqtt message to your broker/Nodered - you can count each message and/or e.g. forward it to Grafana aso
-
+  
   (Hardware part)
   + Cut J1 carefully on the backside of your MicroWakeupper shield - this will power on/off the Wemos
   + Connect a reed switch to the MicroWakeupper to SWITCH IN/OUT
@@ -35,7 +33,6 @@
   
   todo:
   + Store the total amount locally somewhere (e.g. eeprom)
-
   (c) 2022, 2023 @tstoegi, Tobias Stöger
   
  ***************************************************************************/
@@ -47,6 +44,7 @@
 #include <PubSubClient.h>
 
 #include <ArduinoOTA.h>
+#define OTA_CLIENT_ID "gasmeter_"
 #define OTA_CLIENT_PASSWORD "your ota password"
 
 #ifndef USE_MICROWAKEUPPER_SHIELD
@@ -59,7 +57,6 @@ MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported
 bool launchedByMicroWakeupperEvent = false;
 #endif
 
-
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
@@ -68,15 +65,16 @@ char msg[50];
 /* Credentials.h should look like
   #define mySSID "yourSSID"
   #define myPASSWORD "1234567890"
-
+  
   #define below value "..." aso...
 */
+
 
 //mqtt_server
 const char* mqtt_server = myMQTTBroker_Server;
 const unsigned int mqtt_port = myMQTTBroker_Port;
 
-const char* mqtt_fprint = myMQTTBroker_Cert_FPrint;
+const char* mqtt_fprint = myMQTTBroker_Cert_FPrint; // use "" if you want to disable cert check
 
 //mqtt_user
 const char* mqtt_user = myMQTTBroker_User_ESP_gasmeter;
@@ -84,7 +82,10 @@ const char* mqtt_pass = myMQTTBroker_Pass_ESP_gasmeter;
 
 //mqtt_topic
 String mqttTopic_out = "haus/gasmeter";
-String clientId = "gasmeter_";
+
+//mqtt_client_id
+#define MQTT_CLIENT_ID_PREFIX "gasmeter_"
+
 
 const float m3_oneround = 0.01;  // one complete round 0.01m3 (or 10 liter of gas)
 
@@ -182,6 +183,7 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_setupMqtt");
         setupMqtt();
+        mqttReconnect();
         setNextState(state_checkSensorData);
         break;
       }
@@ -246,6 +248,7 @@ void doNextState(State aNewState) {
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
         microWakeupper.reenable();
+        deepSleep();
         delay(1000);
 #else
         Serial.println("!!! Unsupported state !!!");
@@ -273,12 +276,12 @@ void doNextState(State aNewState) {
   delay(100);
 }
 void mqttPublish(String msg, const char* subTopic) {
-  Serial.print(">> Publishing message: ");
   String topicString = mqttTopic_out + "/" + subTopic;
   Serial.print(topicString);
   Serial.print(" ");
   Serial.println(msg);
   mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
+  Serial.print(">> Published message: ");
 }
 
 void setupWifi() {
@@ -315,9 +318,11 @@ void setupWifi() {
 }
 
 void setupOTA() {
-  String clientID = clientId + WiFi.localIP().toString();
-  Serial.println(clientID);
-  ArduinoOTA.setHostname(clientID.c_str());
+  String ota_client_id = OTA_CLIENT_ID + WiFi.localIP().toString();
+  Serial.print("OTA_CLIENT_ID: ");
+  Serial.println(ota_client_id);
+
+  ArduinoOTA.setHostname(ota_client_id.c_str());
 
   ArduinoOTA.setPassword(OTA_CLIENT_PASSWORD);
 
@@ -367,8 +372,10 @@ void mqttReconnect() {
   while (!mqttClient.connected()) {
     Serial.print("Attempting MQTT connection...");
 
-    // Create a random client ID
-    clientId += WiFi.localIP().toString();  // mqtt clientId must be unique !!!
+    // Create a random and unique client ID for mqtt
+    String clientId = MQTT_CLIENT_ID_PREFIX + WiFi.localIP().toString();
+    Serial.print("MQTT_CLIENT_ID_PREFIX: ");
+    Serial.println(clientId);
 
     // Attempt to connect
     if (mqttClient.connect(clientId.c_str(), mqtt_user, mqtt_pass)) {
@@ -386,4 +393,19 @@ void mqttReconnect() {
       delay(5000);
     }
   }
+}
+
+void deepSleep() {
+  mqttClient.disconnect();
+
+  delay(100);
+
+  WiFi.disconnect();
+  WiFi.mode(WIFI_OFF);
+  delay(1);
+  WiFi.forceSleepBegin();
+
+  Serial.println("Going into deepSleep now");
+  ESP.deepSleepMax();  //(seconds * 1000000);   // ESP.deepSleep expects microseconds
+  delay(200);          // Seems recommended after calling deepSleep
 }
