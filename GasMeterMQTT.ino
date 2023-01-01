@@ -40,6 +40,8 @@
 
 #include <Arduino.h>
 
+#include <EEPROM.h>
+
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
@@ -88,15 +90,21 @@ char msg[50];
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
 // $$$config$$$
 
-const float m3_oneround = 0.01;  // one complete round 0.01m3 (or 10 liter of gas)
+const float oneround_m3 = 0.01f;  // one complete round 0.01m3 (or 10 liter of gas)
 
-// todo store locally somewhere
-// float m3_total = 0.0;            // total overall
+struct GasCounter {
+  float total_m3;
+};
+GasCounter gasCounter = { 0.00f };  // todo set initial value via mqtt subscribe
+
+int currentEEPROMAddress = 0;
+#define MAGIC_BYTE '#'
+#define EEPROM_SIZE_BYTES_MAX 512
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
-  // nothing to see here
+// nothing to see here
 #else
-  // inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
+// inductive proximity sensor LJ12A3-4-Z/BX 5V connected via voltage divider to A0
 #define SIGNAL_SENSOR A0
 #define SIGNAL_HYST_MIN 450
 #define SIGNAL_HYST_MAX 550
@@ -120,7 +128,10 @@ int nextStateDelaySeconds = 0;
 
 void setup() {
   Serial.begin(115200);
+  EEPROM.begin(EEPROM_SIZE_BYTES_MAX);  // mandator for esp8266 (because EEPROM is emulated for FLASH)
   delay(100);
+  findLastEEPROMAddress();
+
   Serial.println("\n Gas Meter Monitoring");
 
   nextState = state_startup;
@@ -151,8 +162,10 @@ void doNextState(State aNewState) {
     case state_startup:
       {
         Serial.println("state_startup");
-
         pinMode(LED_BUILTIN, OUTPUT);
+        Serial.println(gasCounter.total_m3);
+        loadFromEEPROM(gasCounter);
+        Serial.println(gasCounter.total_m3);
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("USE_MICROWAKEUPPER_SHIELD true");
@@ -194,6 +207,12 @@ void doNextState(State aNewState) {
         Serial.println("state_checkSensorData");
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
+
+        // one start means one turn around gasmeter
+        Serial.println(gasCounter.total_m3);
+        gasCounter.total_m3 = gasCounter.total_m3 + oneround_m3;
+        Serial.println(oneround_m3);
+        Serial.println(gasCounter.total_m3);
         if (launchedByMicroWakeupperEvent) {
           setNextState(state_sendMqtt);
         } else {
@@ -227,16 +246,8 @@ void doNextState(State aNewState) {
     case state_sendMqtt:
       {
         Serial.println("state_sendMqtt");
-        mqttPublish(String(m3_oneround), "m3used");
 
-        // todo store locally somewhere
-        // m3_total += m3_oneround;
-        // mqttPublish(String(m3_total), "m3total");
-
-        static unsigned long lastMillis = millis();
-        unsigned long duration = millis() - lastMillis;
-        lastMillis = millis();
-        mqttPublish(String(duration), "durationInMillis");
+        mqttPublish(String(gasCounter.total_m3), "total_m3");
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         setNextState(state_turingOff);
@@ -249,6 +260,9 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_turingOff");
         digitalWrite(LED_BUILTIN, true);  // turn led off
+        increaseEEPROMAddress();
+        storeToEEPROM(gasCounter);
+        EEPROM.end();
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
@@ -419,4 +433,62 @@ void deepSleep() {
   Serial.println("Going into deepSleep now");
   ESP.deepSleepMax();  // around 71 minutes
   delay(200);          // Seems recommended after calling deepSleep
+}
+
+void findLastEEPROMAddress() {
+  Serial.println("### EEPROM DUMP ###");
+  for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX - sizeof(gasCounter); currentEEPROMAddress++) {  //max EEPROM_SIZE_BYTES-length data(0..511 bytes)
+    // read a byte from the current address of the EEPROM
+    char value = EEPROM.read(currentEEPROMAddress);
+    Serial.print(currentEEPROMAddress);
+    Serial.print("\t");
+    Serial.print(value);
+    Serial.println();
+    // read until we find something different as MAGIC_BYTE
+    // e.g. ########47110815#####...
+    //              ^
+    if (value != MAGIC_BYTE) {
+      currentEEPROMAddress--;  // skip one byte back for start write offset
+      break;
+    }
+  }
+  Serial.print("Found EEPROM address: ");
+  Serial.println(currentEEPROMAddress);
+}
+
+void increaseEEPROMAddress() {
+  currentEEPROMAddress++;
+  if (currentEEPROMAddress + 1 >= EEPROM_SIZE_BYTES_MAX - sizeof(gasCounter)) {
+    // we start from the beginning
+    currentEEPROMAddress = 0;
+  }
+  Serial.print("New EEPROM address: ");
+  Serial.println(currentEEPROMAddress);
+  Serial.println(sizeof(gasCounter));
+}
+
+void storeToEEPROM(GasCounter gasCounter) {
+  Serial.print("storeToEEPROM GasCounter: ");
+  Serial.println(gasCounter.total_m3);
+  EEPROM.write(currentEEPROMAddress, MAGIC_BYTE);
+  EEPROM.put(currentEEPROMAddress + 1, gasCounter);
+  EEPROM.commit();
+}
+
+void loadFromEEPROM(GasCounter& gasCounter) {
+  Serial.print("Read EEPROM address: ");
+  Serial.print(currentEEPROMAddress);
+  char magicByteRead = EEPROM.read(currentEEPROMAddress);
+  Serial.println(magicByteRead);
+  if (magicByteRead != MAGIC_BYTE) {
+    Serial.println("!!! FATAL ERROR !!!");
+  }
+  EEPROM.get(currentEEPROMAddress + 1, gasCounter);
+  Serial.print("loadFromEEPROM GasCounter: ");
+  Serial.println(gasCounter.total_m3);
+
+  if (gasCounter.total_m3 < 0.0 || isnan(gasCounter.total_m3)) {
+    Serial.println("!!! Resetting gasCounter.total_m3 to 0.00");
+    gasCounter.total_m3 = 0.00f;
+  }
 }
