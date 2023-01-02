@@ -456,6 +456,11 @@ void findLastEEPROMAddress() {
       break;
     }
   }
+
+  if (currentEEPROMAddress < 0) {  // empty/new EEPROM
+    currentEEPROMAddress = -1;     // will be set to 0 in
+  }
+
   Serial.print("Found EEPROM address: ");
   Serial.println(currentEEPROMAddress);
 }
