@@ -250,6 +250,10 @@ void doNextState(State aNewState) {
         mqttPublish(String(gasCounter.total_m3), "total_m3");
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
+        Serial.print("Current Battery Voltage:");
+        Serial.println(microWakeupper.readVBatt());
+        mqttPublish(String(microWakeupper.readVBatt()), "batteryVoltage");
+
         setNextState(state_turingOff);
 #else
         setNextState(state_checkSensorData);
