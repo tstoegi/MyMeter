@@ -112,6 +112,7 @@ int currentEEPROMAddress = 0;
 
 #endif
 
+long rssi = 0;  // wifi signal strength
 
 enum State {
   state_startup = 0,
@@ -248,6 +249,7 @@ void doNextState(State aNewState) {
         Serial.println("state_sendMqtt");
 
         mqttPublish(String(gasCounter.total_m3), "total_m3");
+        mqttPublish(String(rssi), "wifi_rssi");
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.print("Current Battery Voltage:");
@@ -344,6 +346,8 @@ void setupWifi() {
   Serial.println(CR_WIFI_SSID);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+  rssi = WiFi.RSSI();
 }
 
 void setupOTA() {
