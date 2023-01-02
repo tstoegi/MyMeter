@@ -31,6 +31,9 @@
   faq:
   Q: Where can I buy the MicroWakeupper battery shield?
   A: My store: https://www.tindie.com/stores/moreiolabs/
+
+  Q: How can I set an initial counter value?
+  A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total_m3" e.g. "202.23" (just once) - a empty value or 0.00 will be ignored
   
   todo:
   + Store the total amount locally somewhere (e.g. eeprom)
@@ -87,6 +90,7 @@ char msg[50];
 #define CO_MQTT_BROKER_IP "192.168.4.3"
 #define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
 #define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
+#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings/#"
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
 // $$$config$$$
 
@@ -239,8 +243,8 @@ void doNextState(State aNewState) {
           setNextState(state_sendMqtt);
           break;  // done
         }
-        setNextState(state_checkSensorData, SIGNAL_CHECK_EVERY_SEC);
         digitalWrite(LED_BUILTIN, !active);
+        setNextState(state_checkSensorData, SIGNAL_CHECK_EVERY_SEC);
         break;
 #endif
       }
@@ -252,8 +256,6 @@ void doNextState(State aNewState) {
         mqttPublish(String(rssi), "wifi_rssi");
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
-        Serial.print("Current Battery Voltage:");
-        Serial.println(microWakeupper.readVBatt());
         mqttPublish(String(microWakeupper.readVBatt()), "batteryVoltage");
 
         setNextState(state_turingOff);
@@ -308,11 +310,11 @@ void doNextState(State aNewState) {
 }
 void mqttPublish(String msg, const char* subTopic) {
   String topicString = String(CO_MQTT_GASMETER_TOPIC_PUB) + "/" + subTopic;
+  mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
+  Serial.print(">> Published message: ");
   Serial.print(topicString);
   Serial.print(" ");
   Serial.println(msg);
-  mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
-  Serial.print(">> Published message: ");
 }
 
 void setupWifi() {
@@ -397,7 +399,7 @@ void setupMqtt() {
   }
   mqttClient.setBufferSize(512);
   mqttClient.setServer(CO_MQTT_BROKER_IP, CO_MQTT_BROKER_PORT);
-  // mqttClient.setCallback(mqttCallback);
+  mqttClient.setCallback(mqttCallback);
 }
 
 void mqttReconnect() {
@@ -414,8 +416,9 @@ void mqttReconnect() {
     if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
       Serial.println("connected");
 
-      // mqttClient.subscribe(mqttTopicOut.c_str());
-      // Serial.println(mqttTopicOut.c_str());
+      mqttClient.subscribe(CO_MQTT_GASMETER_TOPIC_SUB);
+      Serial.print("mqtt subscription topic: ");
+      Serial.println(CO_MQTT_GASMETER_TOPIC_SUB);
 
       mqttClient.loop();
     } else {
@@ -426,6 +429,33 @@ void mqttReconnect() {
       delay(5000);
     }
   }
+}
+
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  Serial.println();
+  Serial.print("<< Received message: ");
+  Serial.print(topic);
+  Serial.print(" ");
+
+  char buff_p[length];
+  for (int i = 0; i < length; i++) {
+    buff_p[i] = (char)payload[i];
+  }
+  buff_p[length] = '\0';
+  String str_payload = String(buff_p);
+  Serial.println(str_payload);
+
+  if (String(topic).endsWith("total_m3")) {
+    float newValue = str_payload.toFloat();
+    if (newValue > 0.00) {
+      Serial.print("Override value total_m3: ");
+      Serial.println(newValue);
+      gasCounter.total_m3 = newValue;
+    }
+  }
+
+  // republish changed values
+  setNextState(state_sendMqtt);
 }
 
 void deepSleep() {
