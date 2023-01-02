@@ -490,7 +490,7 @@ void loadFromEEPROM(GasCounter& gasCounter) {
   Serial.println(magicByteRead);
   if (magicByteRead != MAGIC_BYTE) {
     Serial.print("No MAGIC_BYTE found at ");
-    Serial.print(currentEEPROMAddress);    
+    Serial.print(currentEEPROMAddress);
   } else {
     EEPROM.get(currentEEPROMAddress + 1, gasCounter);
     Serial.print("loadFromEEPROM GasCounter: ");
