@@ -468,7 +468,6 @@ void increaseEEPROMAddress() {
   }
   Serial.print("New EEPROM address: ");
   Serial.println(currentEEPROMAddress);
-  Serial.println(sizeof(gasCounter));
 }
 
 void storeToEEPROM(GasCounter gasCounter) {
@@ -485,10 +484,12 @@ void loadFromEEPROM(GasCounter& gasCounter) {
   char magicByteRead = EEPROM.read(currentEEPROMAddress);
   Serial.println(magicByteRead);
   if (magicByteRead != MAGIC_BYTE) {
-    Serial.println("!!! FATAL ERROR !!!");
+    Serial.print("No MAGIC_BYTE found at ");
+    Serial.print(currentEEPROMAddress);    
+  } else {
+    EEPROM.get(currentEEPROMAddress + 1, gasCounter);
+    Serial.print("loadFromEEPROM GasCounter: ");
   }
-  EEPROM.get(currentEEPROMAddress + 1, gasCounter);
-  Serial.print("loadFromEEPROM GasCounter: ");
   Serial.println(gasCounter.total_m3);
 
   if (gasCounter.total_m3 < 0.0 || isnan(gasCounter.total_m3)) {
