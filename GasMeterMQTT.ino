@@ -74,8 +74,8 @@ elpmaxe ***/
 #define CO_MQTT_BROKER_IP "192.168.4.3"
 #define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
 #define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
-#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings/#"
-#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
+#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings"  // we subscribe to + "/#"
+#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
 // $$$config$$$
 
 
@@ -258,11 +258,11 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_sendMqtt");
 
-        mqttPublish(String(gasCounter.total_m3), "total_m3");
-        mqttPublish(String(rssi), "wifi_rssi");
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_m3));
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
-        mqttPublish(String(microWakeupper.readVBatt()), "batteryVoltage");
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt()));
 
         setNextState(state_turingOff);
 #else
@@ -414,9 +414,10 @@ void mqttReconnect() {
     if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
       Serial.println("connected");
 
-      mqttClient.subscribe(CO_MQTT_GASMETER_TOPIC_SUB);
+      String subTopic = String(CO_MQTT_GASMETER_TOPIC_SUB) + "/#";
+      mqttClient.subscribe(subTopic.c_str());
       Serial.print("mqtt subscription topic: ");
-      Serial.println(CO_MQTT_GASMETER_TOPIC_SUB);
+      Serial.println(subTopic.c_str());
 
       mqttClient.loop();
     } else {
@@ -429,8 +430,8 @@ void mqttReconnect() {
   }
 }
 
-void mqttPublish(String msg, const char* subTopic) {
-  String topicString = String(CO_MQTT_GASMETER_TOPIC_PUB) + "/" + subTopic;
+void mqttPublish(const char* mainTopic, const char* subTopic, String msg) {
+  String topicString = String(mainTopic) + "/" + String(subTopic);
   mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
   Serial.print(">> Published message: ");
   Serial.print(topicString);
@@ -458,6 +459,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Serial.print("Override value total_m3: ");
       Serial.println(newValue);
       gasCounter.total_m3 = newValue;
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, "total_m3", "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
     }
   }
 
