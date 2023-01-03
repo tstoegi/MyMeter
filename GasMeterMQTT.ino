@@ -314,14 +314,6 @@ void doNextState(State aNewState) {
 
   delay(100);
 }
-void mqttPublish(String msg, const char* subTopic) {
-  String topicString = String(CO_MQTT_GASMETER_TOPIC_PUB) + "/" + subTopic;
-  mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
-  Serial.print(">> Published message: ");
-  Serial.print(topicString);
-  Serial.print(" ");
-  Serial.println(msg);
-}
 
 void setupWifi() {
   WiFi.forceSleepWake();
@@ -435,6 +427,15 @@ void mqttReconnect() {
       delay(5000);
     }
   }
+}
+
+void mqttPublish(String msg, const char* subTopic) {
+  String topicString = String(CO_MQTT_GASMETER_TOPIC_PUB) + "/" + subTopic;
+  mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
+  Serial.print(">> Published message: ");
+  Serial.print(topicString);
+  Serial.print(" ");
+  Serial.println(msg);
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
