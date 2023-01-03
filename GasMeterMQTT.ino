@@ -34,6 +34,9 @@
 
   Q: How can I set an initial counter value?
   A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total_m3" e.g. "202.23" - after receiving there is a response with "0"
+
+  Q: How can I install OTA update (within the Arduino SDK)?
+  A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/turningOff" e.g. "false" - after receiving the Wemos will stay online until the next restart or external reset
   
   todo:
   + Store the total amount locally somewhere (e.g. eeprom)
@@ -124,6 +127,8 @@ int currentEEPROMAddress = 0;
 
 long rssi = 0;  // wifi signal strength
 
+bool turningOff = true;
+
 enum State {
   state_startup = 0,
   state_setupWifi = 1,
@@ -131,8 +136,9 @@ enum State {
   state_setupMqtt = 3,
   state_checkSensorData = 4,
   state_sendMqtt = 5,
-  state_turingOff = 6,
-  state_turnedOff = 7
+  state_idle = 6,
+  state_turningOff = 7,
+  state_turnedOff = 8
 } nextState;
 
 int nextStateDelaySeconds = 0;
@@ -227,7 +233,7 @@ void doNextState(State aNewState) {
         if (launchedByMicroWakeupperEvent) {
           setNextState(state_sendMqtt);
         } else {
-          setNextState(state_turingOff);
+          setNextState(state_turningOff);
         }
 #else  // we use a sensor with active-low and inactive-high signal (reverse)
         int adc = analogRead(SIGNAL_SENSOR);
@@ -264,15 +270,28 @@ void doNextState(State aNewState) {
 #ifdef USE_MICROWAKEUPPER_SHIELD
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt()));
 
-        setNextState(state_turingOff);
+        setNextState(state_turningOff);
 #else
         setNextState(state_checkSensorData);
 #endif
         break;
       }
-    case state_turingOff:
+    case state_idle:
       {
-        Serial.println("state_turingOff");
+        Serial.println("state_idle (until next manual restart or external reset)");  // can be used for OTA updates
+        digitalWrite(LED_BUILTIN, false);
+        delay(200);
+        digitalWrite(LED_BUILTIN, true);
+        delay(1000);
+        break;
+      }
+    case state_turningOff:
+      {
+        if (!turningOff) {
+          setNextState(state_idle);
+          break;
+        }
+        Serial.println("state_turningOff");
         digitalWrite(LED_BUILTIN, true);  // turn led off
         increaseEEPROMAddress();
         storeToEEPROM(gasCounter);
@@ -302,7 +321,7 @@ void doNextState(State aNewState) {
       }
   }
 
-  if (aNewState > state_setupMqtt && aNewState < state_turingOff) {
+  if (aNewState > state_setupMqtt && aNewState < state_turningOff) {
     if (!mqttClient.loop()) {  //needs to be called regularly
       mqttReconnect();
     }
@@ -453,18 +472,29 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String str_payload = String(buff_p);
   Serial.println(str_payload);
 
-  if (String(topic).endsWith("total_m3")) {
+  String subTopic = "total_m3";
+  if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
     if (newValue > 0.00) {
       Serial.print("Override value total_m3: ");
       Serial.println(newValue);
       gasCounter.total_m3 = newValue;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, "total_m3", "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
+      storeToEEPROM(gasCounter);
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
+      mqttClient.loop();
     }
   }
 
-  // republish changed values
-  setNextState(state_sendMqtt);
+  subTopic = "turningOff";
+  if (String(topic).endsWith(subTopic)) {
+    if (str_payload.startsWith("false")
+        || str_payload.startsWith("no")) {
+      Serial.println("Disabling temporarly turningOff/deepSleep");
+      turningOff = false;
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "true");
+      mqttClient.loop();
+    }
+  }
 }
 
 void deepSleep() {
