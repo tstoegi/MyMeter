@@ -93,6 +93,7 @@ elpmaxe ***/
 #ifdef USE_MICROWAKEUPPER_SHIELD
 #include <MicroWakeupper.h>
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
+//microWakeupper.setVoltageDivider(float);    // calibration: A0 read (ADO max 1024) - this will override VOLTAGEDIVIDER_DEFAULT
 bool launchedByMicroWakeupperEvent = false;
 #endif
 
