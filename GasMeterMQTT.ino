@@ -33,7 +33,7 @@
   A: My store: https://www.tindie.com/stores/moreiolabs/
 
   Q: How can I set an initial counter value?
-  A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total_m3" e.g. "202.23" (just once) - a empty value or 0.00 will be ignored
+  A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total_m3" e.g. "202.23" - after receiving there is a response with "0"
   
   todo:
   + Store the total amount locally somewhere (e.g. eeprom)
