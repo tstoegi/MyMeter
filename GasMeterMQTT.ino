@@ -302,7 +302,6 @@ void doNextState(State aNewState) {
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
         microWakeupper.reenable();
-        deepSleep();
         delay(5000);  // time for the MicroWakeupper to power off the wemos
 
         deepSleep();  // if the MicroWakeupper Switch is still in an ON state, we try to sleep
@@ -513,8 +512,6 @@ void deepSleep() {
   WiFi.forceSleepBegin();
 
   Serial.println("Going into deepSleep now");
-  ESP.deepSleepMax();  // around 71 minutes
-  delay(200);          // Seems recommended after calling deepSleep
   //ESP.deepSleep(1000); // todo does not work at the moment - is setting pin7 to high sadly :-(
   //ESP.deepSleepMax();  // around 71 minutes
   delay(200);  // Seems recommended after calling deepSleep
