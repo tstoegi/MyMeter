@@ -147,6 +147,7 @@ int nextStateDelaySeconds = 0;
 void setup() {
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE_BYTES_MAX);  // mandator for esp8266 (because EEPROM is emulated for FLASH)
+
   delay(100);
   findLastEEPROMAddress();
 
@@ -302,6 +303,9 @@ void doNextState(State aNewState) {
         Serial.println("Waiting for turning device off (J1 on MicroWakeupperShield cutted!)");
         microWakeupper.reenable();
         deepSleep();
+        delay(5000);  // time for the MicroWakeupper to power off the wemos
+
+        deepSleep();  // if the MicroWakeupper Switch is still in an ON state, we try to sleep
         delay(1000);
         setNextState(state_turnedOff);
 #else
@@ -511,6 +515,9 @@ void deepSleep() {
   Serial.println("Going into deepSleep now");
   ESP.deepSleepMax();  // around 71 minutes
   delay(200);          // Seems recommended after calling deepSleep
+  //ESP.deepSleep(1000); // todo does not work at the moment - is setting pin7 to high sadly :-(
+  //ESP.deepSleepMax();  // around 71 minutes
+  delay(200);  // Seems recommended after calling deepSleep
 }
 
 void findLastEEPROMAddress() {
