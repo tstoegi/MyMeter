@@ -518,7 +518,7 @@ void increaseEEPROMAddress() {
 void storeToEEPROM(GasCounter gasCounter) {
   Serial.print("storeToEEPROM GasCounter: ");
   Serial.println(gasCounter.total_m3);
-  EEPROM.write(currentEEPROMAddress, MAGIC_BYTE);
+  EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
   EEPROM.put(currentEEPROMAddress + 1, gasCounter);
   EEPROM.commit();
 }
