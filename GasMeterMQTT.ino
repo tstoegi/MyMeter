@@ -478,7 +478,6 @@ void deepSleep() {
 
 void findLastEEPROMAddress() {
   Serial.println("### EEPROM DUMP ###");
-  for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX - sizeof(gasCounter); currentEEPROMAddress++) {  //max EEPROM_SIZE_BYTES-length data(0..511 bytes)
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
     // read a byte from the current address of the EEPROM
     char value = EEPROM.read(currentEEPROMAddress);
@@ -505,7 +504,6 @@ void findLastEEPROMAddress() {
 
 void increaseEEPROMAddress() {
   currentEEPROMAddress++;
-  if (currentEEPROMAddress + 1 >= EEPROM_SIZE_BYTES_MAX - sizeof(gasCounter)) {
   if (currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - sizeofStructGasCounter) {
     // we start from the beginning
     currentEEPROMAddress = 0;
