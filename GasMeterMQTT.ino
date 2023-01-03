@@ -41,7 +41,43 @@
   
  ***************************************************************************/
 
+
+
 #include <Arduino.h>
+
+#ifndef USE_MICROWAKEUPPER_SHIELD
+#define USE_MICROWAKEUPPER_SHIELD true  // !!! change this to false if you want Variant A !!!
+#endif
+
+#include <Credentials.h>  // located (or create one) in folder "Arduino/libraries/Credentials/"
+/*** example of a Credentials.h file
+
+// your wifi
+#define CR_WIFI_SSID "wifi_ssid"
+#define CR_WIFI_PASSWORD "wifi_password"
+
+// ota - over the air firmware updates - userid and password of your choise
+#define CR_OTA_GASMETER_CLIENT_ID_PREFIX "gasmeter_"
+#define CR_OTA_GASMETER_CLIENT_PASSWORD "0123456789"
+
+// your mqtt server cert fingerprint -> use "" if you want to disable cert checking
+#define CR_MQTT_BROKER_CERT_FINGERPRINT "AA F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 00"
+
+// your mqtt user and password as created on the server side
+#define CR_MQTT_BROKER_GASMETER_USER "gasmeter"
+#define CR_MQTT_BROKER_GASMETER_PASSWORD "0123456789"
+
+elpmaxe ***/
+
+
+// $$$config$$$
+#define CO_MQTT_BROKER_IP "192.168.4.3"
+#define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
+#define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
+#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings/#"
+#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
+// $$$config$$$
+
 
 #include <EEPROM.h>
 
@@ -50,10 +86,6 @@
 #include <PubSubClient.h>
 
 #include <ArduinoOTA.h>
-
-#ifndef USE_MICROWAKEUPPER_SHIELD
-#define USE_MICROWAKEUPPER_SHIELD true  // !!! change this to false if you want Variant A !!!
-#endif
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
 #include <MicroWakeupper.h>
@@ -64,35 +96,6 @@ bool launchedByMicroWakeupperEvent = false;
 WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
-
-#include <Credentials.h>  // located (or create one) in folder "Arduino/libraries/Credentials/"
-/* example
-
-// your wifi
-#define CR_WIFI_SSID        "wifi_ssid"
-#define CR_WIFI_PASSWORD    "wifi_password"
-
-// ota - over the air firmware updates - userid and password of your choise
-#define CR_OTA_GASMETER_CLIENT_ID_PREFIX       "gasmeter_"
-#define CR_OTA_GASMETER_CLIENT_PASSWORD        "0123456789"
-
-// your mqtt server cert fingerprint -> use "" if you want to disable cert checking
-#define CR_MQTT_BROKER_CERT_FINGERPRINT "AA F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 00"
-
-// your mqtt user and password as created on the server side
-#define CR_MQTT_BROKER_GASMETER_USER "gasmeter"
-#define CR_MQTT_BROKER_GASMETER_PASSWORD "0123456789"
-
-*/
-
-
-// $$$config$$$
-#define CO_MQTT_BROKER_IP "192.168.4.3"
-#define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
-#define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
-#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings/#"
-#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"  // + ip address added by code
-// $$$config$$$
 
 const float oneround_m3 = 0.01f;  // one complete round 0.01m3 (or 10 liter of gas)
 
