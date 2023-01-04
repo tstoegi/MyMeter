@@ -163,11 +163,11 @@ void loop() {
   }
 
   static unsigned long prevMillis = 0;
-  while (millis() - prevMillis >= nextStateDelaySeconds * 1000) {
+  if (millis() - prevMillis >= nextStateDelaySeconds * 1000) {
     prevMillis = millis();
     doNextState(nextState);
   }
-  delay(1000);
+  delay(100);
 }
 void setNextState(State aNextState, int aNextStateDelaySeconds = 0) {
   nextState = aNextState;
