@@ -111,7 +111,7 @@ GasCounter gasCounter = { 0.00f };  // todo set initial value via mqtt subscribe
 // we store the new value in EEPROM always at currentEEPROMAddress+1 to spread max write-life-cycles of the whole EEPROM - at the end we start from 0 again
 int sizeofStructGasCounter = 10;  // do not use sizeof!!! it will not work on structs
 
-int currentEEPROMAddress = 0;
+int currentEEPROMAddress = 0;  // first address we try to read a valid value
 #define MAGIC_BYTE '#'
 #define EEPROM_SIZE_BYTES_MAX 512
 
@@ -483,7 +483,12 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Serial.print("Override value total_m3: ");
       Serial.println(newValue);
       gasCounter.total_m3 = newValue;
+
+      formatEEPROM();
+      currentEEPROMAddress = 0;
+      findLastEEPROMAddress();      
       storeToEEPROM(gasCounter);
+
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
       mqttClient.loop();
     }
@@ -517,6 +522,18 @@ void deepSleep() {
   delay(200);  // Seems recommended after calling deepSleep
 }
 
+void formatEEPROM() {
+  Serial.println("formatEEPROM");
+  for (int i = 0; i < EEPROM_SIZE_BYTES_MAX; i++) {
+    EEPROM.write(i, 255);
+    char value = EEPROM.read(i);
+    if (value != 255) {
+      Serial.print("EEPROM CHECK FAILED @");
+      Serial.println(i);
+    }
+  }
+}
+
 void findLastEEPROMAddress() {
   Serial.println("### EEPROM DUMP ###");
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
@@ -535,11 +552,11 @@ void findLastEEPROMAddress() {
     }
   }
 
-  if (currentEEPROMAddress < 0) {  // empty/new EEPROM
-    currentEEPROMAddress = -1;     // will be set to 0 in
+  if (currentEEPROMAddress < 0 || currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX) {  // empty/new EEPROM
+    currentEEPROMAddress = -1;                                                      // will be set to 0 in increaseEEPROMAddress
   }
 
-  Serial.print("Found EEPROM address: ");
+  Serial.print("Current EEPROM address (-1 -> nothing found): ");
   Serial.println(currentEEPROMAddress);
 }
 
