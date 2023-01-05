@@ -183,7 +183,7 @@ void doNextState(State aNewState) {
         Serial.println("state_startup");
         pinMode(LED_BUILTIN, OUTPUT);
         Serial.println(gasCounter.total_liter);
-        loadFromEEPROM(gasCounter);
+        loadFromEEPROM();
         Serial.println(gasCounter.total_liter);
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
@@ -296,7 +296,7 @@ void doNextState(State aNewState) {
 
         digitalWrite(LED_BUILTIN, true);  // turn led off
         increaseEEPROMAddress();
-        storeToEEPROM(gasCounter);
+        storeToEEPROM();
         EEPROM.end();
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
@@ -486,7 +486,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
       formatEEPROM();
       currentEEPROMAddress = 0;
-      storeToEEPROM(gasCounter);
+      storeToEEPROM();
 
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
       mqttClient.loop();
@@ -571,7 +571,7 @@ void increaseEEPROMAddress() {
   Serial.println(currentEEPROMAddress);
 }
 
-void storeToEEPROM(GasCounter& gasCounter) {
+void storeToEEPROM() {
   Serial.print("storeToEEPROM GasCounter: ");
   Serial.println(gasCounter.total_liter);
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
@@ -585,7 +585,7 @@ void storeToEEPROM(GasCounter& gasCounter) {
   EEPROM.commit();
 }
 
-void loadFromEEPROM(GasCounter& gasCounter) {
+void loadFromEEPROM() {
   Serial.print("Read EEPROM address: ");
   Serial.print(currentEEPROMAddress);
   char magicByteRead = EEPROM.read(currentEEPROMAddress);
