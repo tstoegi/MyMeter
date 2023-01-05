@@ -489,6 +489,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       storeToEEPROM(gasCounter);
 
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
+      mqttClient.loop();
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000));
       mqttClient.loop();
     }
@@ -570,7 +571,7 @@ void increaseEEPROMAddress() {
   Serial.println(currentEEPROMAddress);
 }
 
-void storeToEEPROM(GasCounter gasCounter) {
+void storeToEEPROM(GasCounter& gasCounter) {
   Serial.print("storeToEEPROM GasCounter: ");
   Serial.println(gasCounter.total_liter);
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
