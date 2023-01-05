@@ -101,18 +101,18 @@ WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
 
-const float oneround_m3 = 0.01f;  // one complete round 0.01m3 (or 10 liter of gas)
+const long one_turnaround_liter = 10;  // one complete round 10 liter of gas (or 0.01 m3)
 
 struct GasCounter {
-  float total_m3;
+  long total_liter;
 };
-GasCounter gasCounter = { 0.00f };  // todo set initial value via mqtt subscribe
+GasCounter gasCounter = { 0 };  // todo set initial value via mqtt subscribe
 
 // we store the new value in EEPROM always at currentEEPROMAddress+1 to spread max write-life-cycles of the whole EEPROM - at the end we start from 0 again
-int sizeofStructGasCounter = 10;  // do not use sizeof!!! it will not work on structs
+int sizeofGasCounterLong = 10;
 
 int currentEEPROMAddress = 0;  // first address we try to read a valid value
-#define MAGIC_BYTE '#'
+#define MAGIC_BYTE '#'         // start mark of our value in EEPROM "#1234567890" or "#  14567800" (max 10 digits)
 #define EEPROM_SIZE_BYTES_MAX 512
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
@@ -182,9 +182,9 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_startup");
         pinMode(LED_BUILTIN, OUTPUT);
-        Serial.println(gasCounter.total_m3);
+        Serial.println(gasCounter.total_liter);
         loadFromEEPROM(gasCounter);
-        Serial.println(gasCounter.total_m3);
+        Serial.println(gasCounter.total_liter);
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         Serial.println("USE_MICROWAKEUPPER_SHIELD true");
@@ -228,10 +228,10 @@ void doNextState(State aNewState) {
 #ifdef USE_MICROWAKEUPPER_SHIELD
 
         // one start means one turn around gasmeter
-        Serial.println(gasCounter.total_m3);
-        gasCounter.total_m3 = gasCounter.total_m3 + oneround_m3;
-        Serial.println(oneround_m3);
-        Serial.println(gasCounter.total_m3);
+        Serial.println(gasCounter.total_liter);
+        gasCounter.total_liter = gasCounter.total_liter + one_turnaround_liter;
+        Serial.println(one_turnaround_liter);
+        Serial.println(gasCounter.total_liter);
         if (launchedByMicroWakeupperEvent) {
           setNextState(state_sendMqtt);
         } else {
@@ -266,7 +266,7 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_sendMqtt");
 
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_m3));
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_liter / 1000.0f));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
@@ -293,7 +293,7 @@ void doNextState(State aNewState) {
           setNextState(state_idle);
           break;
         }
-        Serial.println("state_turningOff");
+
         digitalWrite(LED_BUILTIN, true);  // turn led off
         increaseEEPROMAddress();
         storeToEEPROM(gasCounter);
@@ -479,17 +479,17 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String subTopic = "total_m3";
   if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
-    if (newValue > 0.00) {
+    if (newValue > 0) {
       Serial.print("Override value total_m3: ");
       Serial.println(newValue);
-      gasCounter.total_m3 = newValue;
+      gasCounter.total_liter = newValue * 1000;
 
       formatEEPROM();
       currentEEPROMAddress = 0;
-      findLastEEPROMAddress();      
       storeToEEPROM(gasCounter);
 
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000));
       mqttClient.loop();
     }
   }
@@ -562,7 +562,7 @@ void findLastEEPROMAddress() {
 
 void increaseEEPROMAddress() {
   currentEEPROMAddress++;
-  if (currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - sizeofStructGasCounter) {
+  if (currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - sizeofGasCounterLong) {
     // we start from the beginning
     currentEEPROMAddress = 0;
   }
@@ -572,9 +572,15 @@ void increaseEEPROMAddress() {
 
 void storeToEEPROM(GasCounter gasCounter) {
   Serial.print("storeToEEPROM GasCounter: ");
-  Serial.println(gasCounter.total_m3);
+  Serial.println(gasCounter.total_liter);
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
-  EEPROM.put(currentEEPROMAddress + 1, gasCounter);
+
+  char buffer[10];
+  sprintf(buffer, "%10lu", gasCounter.total_liter);
+  for (int i = 0; i < sizeofGasCounterLong; i++) {
+    EEPROM.put(currentEEPROMAddress + 1 + i, buffer[i]);
+  }
+
   EEPROM.commit();
 }
 
@@ -587,13 +593,18 @@ void loadFromEEPROM(GasCounter& gasCounter) {
     Serial.print("No MAGIC_BYTE found at ");
     Serial.print(currentEEPROMAddress);
   } else {
-    EEPROM.get(currentEEPROMAddress + 1, gasCounter);
+    String valueAsString = "";
+    for (int i = 0; i < sizeofGasCounterLong; i++) {
+      char c = EEPROM.read(currentEEPROMAddress + 1 + i);
+      valueAsString += c;
+    }
+    gasCounter.total_liter = valueAsString.toInt();  // returns long
     Serial.print("loadFromEEPROM GasCounter: ");
+    Serial.println(gasCounter.total_liter);
   }
-  Serial.println(gasCounter.total_m3);
 
-  if (gasCounter.total_m3 < 0.0 || isnan(gasCounter.total_m3)) {
-    Serial.println("!!! Resetting gasCounter.total_m3 to 0.00");
-    gasCounter.total_m3 = 0.00f;
+  if (gasCounter.total_liter < 0 || isnan(gasCounter.total_liter)) {
+    Serial.println("!!! Resetting gasCounter.total_liter to 0");
+    gasCounter.total_liter = 0;
   }
 }
