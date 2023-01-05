@@ -482,7 +482,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (newValue > 0) {
       Serial.print("Override value total_m3: ");
       Serial.println(newValue);
-      gasCounter.total_liter = newValue * 1000;
+      gasCounter.total_liter = newValue * 1000.0f;
 
       formatEEPROM();
       currentEEPROMAddress = 0;
@@ -490,7 +490,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
       mqttClient.loop();
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000));
+      Serial.print(">>>");
+      Serial.println(String(gasCounter.total_liter / 1000.0f));
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
       mqttClient.loop();
     }
   }
