@@ -268,6 +268,7 @@ void doNextState(State aNewState) {
 
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_liter / 1000.0f));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "currentEEPROMAddress", String(currentEEPROMAddress));
 
 #ifdef USE_MICROWAKEUPPER_SHIELD
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt()));
