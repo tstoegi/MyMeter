@@ -566,7 +566,7 @@ void findLastEEPROMAddress() {
 
 void increaseEEPROMAddress() {
   currentEEPROMAddress++;
-  if (currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - sizeofGasCounterLong) {
+  if (currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX - sizeofGasCounterLong) {
     // we start from the beginning
     currentEEPROMAddress = 0;
   }
