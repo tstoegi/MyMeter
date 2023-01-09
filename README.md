@@ -39,7 +39,7 @@ A: Just send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/to
 
 Q: How can I install OTA update (via Arduino IDE)?
 <br>
-A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/turningOff" e.g. "false" - after receiving the Wemos will stay online until the next restart or external reset. You will see a OTA device named "gasmeter_ip_address".
+A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/turningOff" e.g. "false" - after receiving the Wemos will stay online (until the next restart or external reset!). You will see a OTA device named "gasmeter_ip_address".
   
-(c) 2022, 2023 @tstoegi, Tobias Stöger
+(c) 2022, 2023 @tstoegi, Tobias Stöger, MIT license
   
