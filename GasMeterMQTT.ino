@@ -37,7 +37,7 @@ elpmaxe ***/
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
 // $$$config$$$
 
-#define versionString "0.1.20230109"
+#define versionString "0.2.20230112"
 
 #include <EEPROM.h>
 
@@ -423,12 +423,8 @@ void deepSleep() {
   delay(1);
   WiFi.forceSleepBegin();
 
-  // todo - known issue - does not work at the moment - deepsleep is setting pin7 to high sadly :-(
-  //Serial.println("Going into deepSleep now");
-  //ESP.deepSleep(10000);
-  //ESP.deepSleepMax();  // around 71 minutes
-
-  delay(200);  // Seems recommended after calling deepSleep
+  ESP.deepSleep(0, RF_DISABLED); // sleep "forever"
+  delay(100);  // Seems recommended after calling deepSleep
 }
 
 void formatEEPROM() {
