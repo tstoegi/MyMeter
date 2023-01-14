@@ -37,7 +37,7 @@ elpmaxe ***/
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
 // $$$config$$$
 
-#define versionString "0.2.20230112"
+#define versionString "0.2.20230114"
 
 #include <EEPROM.h>
 
@@ -61,7 +61,7 @@ const long one_turnaround_liter = 10;  // one complete round 10 liter of gas (or
 struct GasCounter {
   long total_liter;
 };
-GasCounter gasCounter = { 0 };  // todo set initial value via mqtt subscribe
+GasCounter gasCounter = { 0 };  // initial value can be set via mqtt retain message - see readme
 
 // we store the new value in EEPROM always at currentEEPROMAddress+1 to spread max write-life-cycles of the whole EEPROM - at the end we start from 0 again
 int sizeofGasCounterLong = 10;
@@ -79,11 +79,12 @@ enum State {
   state_setupWifi = 1,
   state_setupOTA = 2,
   state_setupMqtt = 3,
-  state_checkSensorData = 4,
-  state_sendMqtt = 5,
-  state_idle = 6,
-  state_turningOff = 7,
-  state_turnedOff = 8
+  state_receiveMqtt = 4,
+  state_checkSensorData = 5,
+  state_sendMqtt = 6,
+  state_idle = 7,
+  state_turningOff = 8,
+  state_turnedOff = 9
 } nextState;
 
 int nextStateDelaySeconds = 0;
@@ -119,6 +120,7 @@ void setNextState(State aNextState, int aNextStateDelaySeconds = 0) {
   nextState = aNextState;
   nextStateDelaySeconds = aNextStateDelaySeconds;
 }
+
 void doNextState(State aNewState) {
   Serial.print("___ doNextState() ___: ");
   Serial.println(aNewState);
@@ -158,8 +160,19 @@ void doNextState(State aNewState) {
         Serial.println("state_setupMqtt");
         setupMqtt();
         mqttReconnect();
-        setNextState(state_checkSensorData);
+        setNextState(state_receiveMqtt);
         break;
+      }
+    case state_receiveMqtt:
+      {
+        Serial.println("state_receiveMqtt");
+        // we process all retained mqtt messages (in callback)
+        for (int i = 0; i < 50; i++) {  // todo Hack - if more incoming messages are queued
+          mqttClient.loop();
+          delay(10);
+          yield();
+        }
+        setNextState(state_checkSensorData);
       }
     case state_checkSensorData:
       {
@@ -229,13 +242,9 @@ void doNextState(State aNewState) {
       }
   }
 
-  if (aNewState > state_setupMqtt && aNewState < state_turningOff) {
+  if (nextState > state_setupMqtt && nextState < state_turningOff) {
     if (!mqttClient.loop()) {  //needs to be called regularly
       mqttReconnect();
-    }
-
-    for (int i = 0; i < 100; i++) {  // todo Hack - if more incoming messages are queued
-      mqttClient.loop();
     }
   }
 
@@ -397,7 +406,6 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Serial.print(">>>");
       Serial.println(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
-      mqttClient.loop();
     }
   }
 
@@ -408,7 +416,16 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Serial.println("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "true");
-      mqttClient.loop();
+    }
+  }
+
+  subTopic = "voltageCalibration";
+  if (String(topic).endsWith(subTopic)) {
+    float newValue = str_payload.toFloat();
+    if (newValue > 0) {
+      Serial.print("Override voltage calibration: ");
+      Serial.println(newValue);
+      microWakeupper.setVoltageDivider(newValue);
     }
   }
 }
@@ -423,8 +440,8 @@ void deepSleep() {
   delay(1);
   WiFi.forceSleepBegin();
 
-  ESP.deepSleep(0, RF_DISABLED); // sleep "forever"
-  delay(100);  // Seems recommended after calling deepSleep
+  ESP.deepSleep(0, RF_DISABLED);  // sleep "forever"
+  delay(100);                     // Seems recommended after calling deepSleep
 }
 
 void formatEEPROM() {
