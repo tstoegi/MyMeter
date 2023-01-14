@@ -49,7 +49,6 @@ elpmaxe ***/
 
 #include <MicroWakeupper.h>
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
-//microWakeupper.setVoltageDivider(float);    // calibration: A0 read (ADO max 1024) - this will override VOLTAGEDIVIDER_DEFAULT
 bool launchedByMicroWakeupperEvent = false;
 
 WiFiClientSecure espClient;
@@ -73,6 +72,7 @@ int currentEEPROMAddress = 0;  // first address we try to read a valid value
 long rssi = 0;  // wifi signal strength
 
 bool turningOff = true;
+float voltageCalibration = 0.0;
 
 enum State {
   state_startup = 0,
@@ -194,7 +194,7 @@ void doNextState(State aNewState) {
 
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_liter / 1000.0f));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt()));
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
 
         setNextState(state_turningOff);
@@ -422,11 +422,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   subTopic = "voltageCalibration";
   if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
-    if (newValue > 0) {
-      Serial.print("Override voltage calibration: ");
-      Serial.println(newValue);
-      microWakeupper.setVoltageDivider(newValue);
-    }
+    Serial.print("Calibrating voltage: ");
+    Serial.println(newValue);
+    voltageCalibration = newValue;
   }
 }
 
