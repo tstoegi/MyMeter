@@ -37,7 +37,7 @@ elpmaxe ***/
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
 // $$$config$$$
 
-#define versionString "0.2.20230114"
+#define versionString "0.3.20230115"
 
 #include <EEPROM.h>
 
@@ -130,6 +130,8 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_startup");
         pinMode(LED_BUILTIN, OUTPUT);
+        digitalWrite(LED_BUILTIN, true);  // turn led off
+
         loadFromEEPROM();
 
         if (microWakeupper.resetedBySwitch() && microWakeupper.isActive()) {
@@ -204,7 +206,7 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_idle (until next manual restart or external reset)");  // can be used for OTA updates
         digitalWrite(LED_BUILTIN, false);
-        delay(200);
+        delay(10);
         digitalWrite(LED_BUILTIN, true);
         delay(1000);
         break;
@@ -409,13 +411,13 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     }
   }
 
-  subTopic = "turningOff";
+  subTopic = "waitForOTA";
   if (String(topic).endsWith(subTopic)) {
-    if (str_payload.startsWith("false")
+    if (str_payload.startsWith("true")
         || str_payload.startsWith("no")) {
       Serial.println("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "true");
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "false");
     }
   }
 
