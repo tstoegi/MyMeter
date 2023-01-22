@@ -194,7 +194,7 @@ void doNextState(State aNewState) {
       {
         Serial.println("state_sendMqtt");
 
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total_m3", String(gasCounter.total_liter / 1000.0f));
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
@@ -391,11 +391,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String str_payload = String(buff_p);
   Serial.println(str_payload);
 
-  String subTopic = "total_m3";
+  String subTopic = "total";
   if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
     if (newValue > 0) {
-      Serial.print("Override value total_m3: ");
+      Serial.print("Override value total: ");
       Serial.println(newValue);
       gasCounter.total_liter = newValue * 1000.0f;
 

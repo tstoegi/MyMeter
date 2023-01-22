@@ -15,7 +15,7 @@ Usually one turn around is euqal to 0,01m3 (or 10 liters) of gas - check your ga
 
 The stacked MicroWakeupper shield is turning your Wemos D1 mini on and off. Recommended: onboard jumper J1 cutted!
   
-The firmware will count each cycle, write the total amount to eeprom and sent a mqtt message to your broker with the total amount of gas (total_m3).
+The firmware will count each cycle, write the total amount to eeprom and sent a mqtt message to your broker with the total amount of gas (total).
   
 ## Setup/Installation
 1. Install the MicroWakeupper library (https://github.com/tstoegi/MicroWakeupper) to your Arduino IDE 
@@ -35,7 +35,7 @@ A: My store: https://www.tindie.com/stores/moreiolabs/
 
 Q: How can I set an initial counter value?
 <br>
-A: Just send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total_m3" e.g. "202.23" - after receiving there is a response with "0" and the normal counter "total_m3" should be up to date
+A: Just send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total" e.g. "202.23" - after receiving there is a response with "0" and the normal counter "total" should be up to date
 
 Q: How can I install OTA update (via Arduino IDE)?
 <br>
