@@ -198,6 +198,7 @@ void doNextState(State aNewState) {
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
+        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "localIP", WiFi.localIP().toString());
 
         setNextState(state_turningOff);
         break;
@@ -257,6 +258,14 @@ void setupWifi() {
   WiFi.forceSleepWake();
   WiFi.mode(WIFI_STA);  // <<< Station
   delay(300);
+
+  // todo - just for testing there - Static IP details...
+  // IPAddress ip(192, 168, 4, 87);
+  // IPAddress gateway(192, 168, 4, 1);
+  // IPAddress subnet(255, 255, 255, 0);
+  // IPAddress dns(192, 168, 4, 1);
+  // WiFi.config(ip, gateway, subnet, dns);
+
   // Wait for connection
   int retries = 5;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
@@ -289,7 +298,9 @@ void setupWifi() {
 }
 
 void setupOTA() {
-  String ota_client_id = CR_OTA_GASMETER_CLIENT_ID_PREFIX + WiFi.localIP().toString();
+  String localIPWithoutDots = WiFi.localIP().toString();
+  localIPWithoutDots.replace(".", "_");
+  String ota_client_id = CR_OTA_GASMETER_CLIENT_ID_PREFIX + localIPWithoutDots;
   Serial.print("OTA_CLIENT_ID: ");
   Serial.println(ota_client_id);
 
