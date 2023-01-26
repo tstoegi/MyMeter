@@ -44,10 +44,33 @@ elpmaxe ***/
 #include <ESP8266WiFi.h>
 #include <ESP8266mDNS.h>
 #include <PubSubClient.h>
-
 #include <ArduinoOTA.h>
 
-#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
+
+//#define debug
+#ifdef debug
+#define Log(str) \
+  Serial.print(__LINE__); \
+  Serial.print(' '); \
+  Serial.print(millis()); \
+  Serial.print(": "); \
+  Serial.print(__PRETTY_FUNCTION__); \
+  Serial.print(' '); \
+  Serial.println(str);
+#define Logf(str, param) \
+  Serial.print(__LINE__); \
+  Serial.print(' '); \
+  Serial.print(millis()); \
+  Serial.print(": "); \
+  Serial.print(__PRETTY_FUNCTION__); \
+  Serial.print(' '); \
+  Serial.printf(str, param);
+#else
+#define Log(str)
+#define Logf(str, param)
+#endif
+
+//#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
 IPAddress ip(192, 168, 4, 87);
 IPAddress gateway(192, 168, 4, 1);
@@ -97,15 +120,17 @@ enum State {
 
 int nextStateDelaySeconds = 0;
 
+unsigned long startTime;
+
 void setup() {
+  startTime = millis();
   Serial.begin(115200);
   EEPROM.begin(EEPROM_SIZE_BYTES_MAX);  // mandator for esp8266 (because EEPROM is emulated for FLASH)
   microWakeupper.begin();               // For correct initialisation
 
   delay(100);
-  findLastEEPROMAddress();
 
-  Serial.println("\n *** Gasmeter Monitoring ***");
+  Serial.println("\n*** Gasmeter Monitoring ***");
   Serial.println(versionString);
 
   nextState = state_startup;
@@ -130,20 +155,22 @@ void setNextState(State aNextState, int aNextStateDelaySeconds = 0) {
 }
 
 void doNextState(State aNewState) {
-  Serial.print("___ doNextState() ___: ");
-  Serial.println(aNewState);
+  Log("___ doNextState() ___: ");
+  Log(aNewState);
 
   switch (aNewState) {
     case state_startup:
       {
-        Serial.println("state_startup");
+        Log("state_startup");
         pinMode(LED_BUILTIN, OUTPUT);
         digitalWrite(LED_BUILTIN, true);  // turn led off
+
+        findLastEEPROMAddress();
 
         loadFromEEPROM();
 
         if (microWakeupper.resetedBySwitch() && microWakeupper.isActive()) {
-          Serial.println("Launched by a MicroWakeupperEvent");
+          Log("Launched by a MicroWakeupperEvent");
           launchedByMicroWakeupperEvent = true;
           microWakeupper.disable();  // Preventing new triggering/resets
         }
@@ -153,21 +180,21 @@ void doNextState(State aNewState) {
       }
     case state_setupWifi:
       {
-        Serial.println("state_setupWifi");
+        Log("state_setupWifi");
         setupWifi();
         setNextState(state_setupOTA);
         break;
       }
     case state_setupOTA:
       {
-        Serial.println("state_setupOTA");
+        Log("state_setupOTA");
         setupOTA();
         setNextState(state_setupMqtt);
         break;
       }
     case state_setupMqtt:
       {
-        Serial.println("state_setupMqtt");
+        Log("state_setupMqtt");
         setupMqtt();
         mqttReconnect();
         setNextState(state_receiveMqtt);
@@ -175,7 +202,7 @@ void doNextState(State aNewState) {
       }
     case state_receiveMqtt:
       {
-        Serial.println("state_receiveMqtt");
+        Log("state_receiveMqtt");
         // we process all retained mqtt messages (in callback)
         for (int i = 0; i < 50; i++) {  // todo Hack - if more incoming messages are queued
           mqttClient.loop();
@@ -186,13 +213,13 @@ void doNextState(State aNewState) {
       }
     case state_checkSensorData:
       {
-        Serial.println("state_checkSensorData");
+        Log("state_checkSensorData");
 
         if (launchedByMicroWakeupperEvent) {
-          Serial.println(gasCounter.total_liter);
+          Log(gasCounter.total_liter);
           gasCounter.total_liter = gasCounter.total_liter + one_turnaround_liter;
-          Serial.println(one_turnaround_liter);
-          Serial.println(gasCounter.total_liter);
+          Log(one_turnaround_liter);
+          Log(gasCounter.total_liter);
           setNextState(state_sendMqtt);
         } else {
           setNextState(state_turningOff);
@@ -200,20 +227,22 @@ void doNextState(State aNewState) {
       }
     case state_sendMqtt:
       {
-        Serial.println("state_sendMqtt");
+        Log("state_sendMqtt");
 
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
+#ifdef debug
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
         mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "localIP", WiFi.localIP().toString());
+#endif
 
         setNextState(state_turningOff);
         break;
       }
     case state_idle:
       {
-        Serial.println("state_idle (until next manual restart or external reset)");  // can be used for OTA updates
+        Log("state_idle (until next manual restart or external reset)");  // can be used for OTA updates
         digitalWrite(LED_BUILTIN, false);
         delay(10);
         digitalWrite(LED_BUILTIN, true);
@@ -232,7 +261,11 @@ void doNextState(State aNewState) {
         storeToEEPROM();
         EEPROM.end();
 
-        Serial.println("Waiting for turning device off (only if jumper J1 on MicroWakeupperShield is cutted!)");
+        Serial.println();
+        Serial.println(millis() - startTime);
+        Serial.println();
+
+        Log("Waiting for turning device off (only if jumper J1 on MicroWakeupperShield is cutted!)");
         microWakeupper.reenable();
         delay(5000);  // time for the MicroWakeupper to power off the wemos
 
@@ -243,13 +276,13 @@ void doNextState(State aNewState) {
       }
     case state_turnedOff:
       {
-        Serial.println("state_turnedOff");
+        Log("state_turnedOff");
         delay(1000);
         break;
       }
     default:
       {
-        Serial.println("!!! unknown status !!!");
+        Log("!!! unknown status !!!");
       }
   }
 
@@ -258,8 +291,6 @@ void doNextState(State aNewState) {
       mqttReconnect();
     }
   }
-
-  delay(100);
 }
 
 // int32_t getWiFiChannel(const char* ssid) {
@@ -276,7 +307,7 @@ void doNextState(State aNewState) {
 void setupWifi() {
   WiFi.forceSleepWake();
   WiFi.mode(WIFI_STA);  // <<< Station
-  delay(300);
+  delay(100);
 
 #ifdef STATIC_IP
   WiFi.config(ip, gateway, subnet, dns);
@@ -285,8 +316,8 @@ void setupWifi() {
   // expert-mode ;-) if you want to use bssid and channel for faster WiFi connection
   // see also WiFi.begin(...)
   // int channel = getWiFiChannel(CR_WIFI_SSID);
-  // Serial.print("WiFi channel id: ");
-  // Serial.println(channel);
+  // Log("WiFi channel id: ");
+  // Log(channel);
   // byte bssid[] = { 0x8A, 0x2A, 0xA8, 0xCA, 0x0B, 0xE7 };  // the bssid can be the routers mac address - just "can"!
 
   // Wait for connection
@@ -294,33 +325,33 @@ void setupWifi() {
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
     //    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD, channel, bssid);
     WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
-    Serial.print(retries);
+    Log(retries);
     int secondsTimeout = 10;
     while (WiFi.status() != WL_CONNECTED && secondsTimeout > 0) {
       yield();
       delay(1000);
-      Serial.print(".");
+      Log(".");
       secondsTimeout--;
     }
     retries--;
-    Serial.println();
+    Log();
   }
 
   if (retries == 0) {
-    Serial.println(CR_WIFI_SSID);
-    Serial.println("Connection failed!");
+    Log(CR_WIFI_SSID);
+    Log("Connection failed!");
     return;
   }
 
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(CR_WIFI_SSID);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+  Log("");
+  Log("Connected to ");
+  Log(CR_WIFI_SSID);
+  Log("IP address: ");
+  Log(WiFi.localIP());
 
 
-  Serial.print("BSSID: ");
-  Serial.println(WiFi.BSSIDstr());
+  Log("BSSID: ");
+  Log(WiFi.BSSIDstr());
 
   rssi = WiFi.RSSI();
 }
@@ -329,47 +360,47 @@ void setupOTA() {
   String localIPWithoutDots = WiFi.localIP().toString();
   localIPWithoutDots.replace(".", "_");
   String ota_client_id = CR_OTA_GASMETER_CLIENT_ID_PREFIX + localIPWithoutDots;
-  Serial.print("OTA_CLIENT_ID: ");
-  Serial.println(ota_client_id);
+  Log("OTA_CLIENT_ID: ");
+  Log(ota_client_id);
 
   ArduinoOTA.setHostname(ota_client_id.c_str());
 
   ArduinoOTA.setPassword(CR_OTA_GASMETER_CLIENT_PASSWORD);
 
   ArduinoOTA.onStart([]() {
-    Serial.println("Start");
+    Log("Start");
   });
   ArduinoOTA.onEnd([]() {
-    Serial.println("\nEnd");
+    Log("\nEnd");
   });
   ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
-    Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+    Logf("Progress: %u%%\r", (progress / (total / 100)))
   });
   ArduinoOTA.onError([](ota_error_t error) {
-    Serial.printf("Error[%u]: ", error);
+    Logf("Error[%u]: ", error);
     if (error == OTA_AUTH_ERROR) {
-      Serial.println("Auth Failed");
+      Log("Auth Failed");
     } else if (error == OTA_BEGIN_ERROR) {
-      Serial.println("Begin Failed");
+      Log("Begin Failed");
     } else if (error == OTA_CONNECT_ERROR) {
-      Serial.println("Connect Failed");
+      Log("Connect Failed");
     } else if (error == OTA_RECEIVE_ERROR) {
-      Serial.println("Receive Failed");
+      Log("Receive Failed");
     } else if (error == OTA_END_ERROR) {
-      Serial.println("End Failed");
+      Log("End Failed");
     }
   });
 
   ArduinoOTA.begin();
-  Serial.println("OTA ready");
+  Log("OTA ready");
 }
 
 void setupMqtt() {
   if (strlen(CR_MQTT_BROKER_CERT_FINGERPRINT) > 0) {
-    Serial.println("Setting mqtt server fingerprint");
+    Log("Setting mqtt server fingerprint");
     espClient.setFingerprint(CR_MQTT_BROKER_CERT_FINGERPRINT);
   } else {
-    Serial.println("No fingerprint verification for mqtt");
+    Log("No fingerprint verification for mqtt");
     espClient.setInsecure();
   }
   mqttClient.setBufferSize(512);
@@ -380,27 +411,27 @@ void setupMqtt() {
 void mqttReconnect() {
   // Loop until we're reconnected
   while (!mqttClient.connected()) {
-    Serial.print("Attempting MQTT connection...");
+    Log("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
     String clientId = CO_MQTT_GASMETER_CLIENT_ID_PREFIX + WiFi.localIP().toString();
-    Serial.print("MQTT_CLIENT_ID: ");
-    Serial.println(clientId);
+    Log("MQTT_CLIENT_ID: ");
+    Log(clientId);
 
     // Attempt to connect
     if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
-      Serial.println("connected");
+      Log("connected");
 
       String subTopic = String(CO_MQTT_GASMETER_TOPIC_SUB) + "/#";
       mqttClient.subscribe(subTopic.c_str());
-      Serial.print("mqtt subscription topic: ");
-      Serial.println(subTopic.c_str());
+      Log("mqtt subscription topic: ");
+      Log(subTopic.c_str());
 
       mqttClient.loop();
     } else {
-      Serial.print("failed, rc=");
-      Serial.print(mqttClient.state());
-      Serial.println(" try again in 5 seconds");
+      Log("failed, rc=");
+      Log(mqttClient.state());
+      Log(" try again in 5 seconds");
       // Wait 5 seconds before retrying
       delay(5000);
     }
@@ -410,17 +441,17 @@ void mqttReconnect() {
 void mqttPublish(const char* mainTopic, const char* subTopic, String msg) {
   String topicString = String(mainTopic) + "/" + String(subTopic);
   mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
-  Serial.print(">> Published message: ");
-  Serial.print(topicString);
-  Serial.print(" ");
-  Serial.println(msg);
+  Log(">> Published message: ");
+  Log(topicString);
+  Log(" ");
+  Log(msg);
 }
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
-  Serial.println();
-  Serial.print("<< Received message: ");
-  Serial.print(topic);
-  Serial.print(" ");
+  Log();
+  Log("<< Received message: ");
+  Log(topic);
+  Log(" ");
 
   char buff_p[length];
   for (int i = 0; i < length; i++) {
@@ -428,14 +459,14 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   }
   buff_p[length] = '\0';
   String str_payload = String(buff_p);
-  Serial.println(str_payload);
+  Log(str_payload);
 
   String subTopic = "total";
   if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
     if (newValue > 0) {
-      Serial.print("Override value total: ");
-      Serial.println(newValue);
+      Log("Override value total: ");
+      Log(newValue);
       gasCounter.total_liter = newValue * 1000.0f;
 
       formatEEPROM();
@@ -444,8 +475,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
       mqttClient.loop();
-      Serial.print(">>>");
-      Serial.println(String(gasCounter.total_liter / 1000.0f));
+      Log(">>>");
+      Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
     }
   }
@@ -454,7 +485,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   if (String(topic).endsWith(subTopic)) {
     if (str_payload.startsWith("true")
         || str_payload.startsWith("no")) {
-      Serial.println("Disabling temporarly turningOff/deepSleep");
+      Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "false");
     }
@@ -463,8 +494,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   subTopic = "voltageCalibration";
   if (String(topic).endsWith(subTopic)) {
     float newValue = str_payload.toFloat();
-    Serial.print("Calibrating voltage: ");
-    Serial.println(newValue);
+    Log("Calibrating voltage: ");
+    Log(newValue);
     voltageCalibration = newValue;
   }
 }
@@ -484,19 +515,19 @@ void deepSleep() {
 }
 
 void formatEEPROM() {
-  Serial.println("formatEEPROM");
+  Log("formatEEPROM");
   for (int i = 0; i < EEPROM_SIZE_BYTES_MAX; i++) {
     EEPROM.write(i, 255);
     char value = EEPROM.read(i);
     if (value != 255) {
-      Serial.print("EEPROM CHECK FAILED @");
-      Serial.println(i);
+      Log("EEPROM CHECK FAILED @");
+      Log(i);
     }
   }
 }
 
 void findLastEEPROMAddress() {
-  Serial.println("### EEPROM DUMP ###");
+  Log("### EEPROM DUMP ###");
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
     // read a byte from the current address of the EEPROM
     char value = EEPROM.read(currentEEPROMAddress);
@@ -517,8 +548,8 @@ void findLastEEPROMAddress() {
     currentEEPROMAddress = -1;                                                      // will be set to 0 in increaseEEPROMAddress
   }
 
-  Serial.print("Current EEPROM address (-1 -> nothing found): ");
-  Serial.println(currentEEPROMAddress);
+  Log("Current EEPROM address (-1 -> nothing found): ");
+  Log(currentEEPROMAddress);
 }
 
 void increaseEEPROMAddress() {
@@ -527,13 +558,13 @@ void increaseEEPROMAddress() {
     // we start from the beginning
     currentEEPROMAddress = 0;
   }
-  Serial.print("New EEPROM address: ");
-  Serial.println(currentEEPROMAddress);
+  Log("New EEPROM address: ");
+  Log(currentEEPROMAddress);
 }
 
 void storeToEEPROM() {
-  Serial.print("storeToEEPROM GasCounter: ");
-  Serial.println(gasCounter.total_liter);
+  Log("storeToEEPROM GasCounter: ");
+  Log(gasCounter.total_liter);
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
 
   char buffer[10];
@@ -546,13 +577,13 @@ void storeToEEPROM() {
 }
 
 void loadFromEEPROM() {
-  Serial.print("Read EEPROM address: ");
-  Serial.print(currentEEPROMAddress);
+  Log("Read EEPROM address: ");
+  Log(currentEEPROMAddress);
   char magicByteRead = EEPROM.read(currentEEPROMAddress);
-  Serial.println(magicByteRead);
+  Log(magicByteRead);
   if (magicByteRead != MAGIC_BYTE) {
-    Serial.print("No MAGIC_BYTE found at ");
-    Serial.print(currentEEPROMAddress);
+    Log("No MAGIC_BYTE found at ");
+    Log(currentEEPROMAddress);
   } else {
     String valueAsString = "";
     for (int i = 0; i < sizeofGasCounterLong; i++) {
@@ -565,7 +596,7 @@ void loadFromEEPROM() {
   }
 
   if (gasCounter.total_liter < 0 || isnan(gasCounter.total_liter)) {
-    Serial.println("!!! Resetting gasCounter.total_liter to 0");
+    Log("!!! Resetting gasCounter.total_liter to 0");
     gasCounter.total_liter = 0;
   }
 }
