@@ -47,7 +47,7 @@ elpmaxe ***/
 #include <ArduinoOTA.h>
 
 
-//#define debug
+//#define debug  // enable or disable debug messages
 #ifdef debug
 #define Log(str) \
   Serial.print(__LINE__); \
