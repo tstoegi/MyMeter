@@ -262,6 +262,17 @@ void doNextState(State aNewState) {
   delay(100);
 }
 
+// int32_t getWiFiChannel(const char* ssid) {
+//   if (int32_t n = WiFi.scanNetworks()) {
+//     for (uint8_t i = 0; i < n; i++) {
+//       if (!strcmp(ssid, WiFi.SSID(i).c_str())) {
+//         return WiFi.channel(i);
+//       }
+//     }
+//   }
+//   return 0;
+// }
+
 void setupWifi() {
   WiFi.forceSleepWake();
   WiFi.mode(WIFI_STA);  // <<< Station
@@ -271,10 +282,17 @@ void setupWifi() {
   WiFi.config(ip, gateway, subnet, dns);
 #endif
 
+  // expert-mode ;-) if you want to use bssid and channel for faster WiFi connection
+  // see also WiFi.begin(...)
+  // int channel = getWiFiChannel(CR_WIFI_SSID);
+  // Serial.print("WiFi channel id: ");
+  // Serial.println(channel);
+  // byte bssid[] = { 0x8A, 0x2A, 0xA8, 0xCA, 0x0B, 0xE7 };  // the bssid can be the routers mac address - just "can"!
 
   // Wait for connection
   int retries = 5;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
+    //    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD, channel, bssid);
     WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
     Serial.print(retries);
     int secondsTimeout = 10;
@@ -299,6 +317,10 @@ void setupWifi() {
   Serial.println(CR_WIFI_SSID);
   Serial.print("IP address: ");
   Serial.println(WiFi.localIP());
+
+
+  Serial.print("BSSID: ");
+  Serial.println(WiFi.BSSIDstr());
 
   rssi = WiFi.RSSI();
 }
