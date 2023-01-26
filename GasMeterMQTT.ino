@@ -47,6 +47,14 @@ elpmaxe ***/
 
 #include <ArduinoOTA.h>
 
+#define STATIC_IP // optional - if you want to use a static IP (for faster WiFi connection)
+#ifdef STATIC_IP
+  IPAddress ip(192, 168, 4, 87);
+  IPAddress gateway(192, 168, 4, 1);
+  IPAddress subnet(255, 255, 255, 0);
+  IPAddress dns(192, 168, 4, 1);
+#endif
+
 #include <MicroWakeupper.h>
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
 bool launchedByMicroWakeupperEvent = false;
@@ -259,21 +267,19 @@ void setupWifi() {
   WiFi.mode(WIFI_STA);  // <<< Station
   delay(300);
 
-  // todo - just for testing there - Static IP details...
-  // IPAddress ip(192, 168, 4, 87);
-  // IPAddress gateway(192, 168, 4, 1);
-  // IPAddress subnet(255, 255, 255, 0);
-  // IPAddress dns(192, 168, 4, 1);
-  // WiFi.config(ip, gateway, subnet, dns);
+#ifdef STATIC_IP
+  WiFi.config(ip, gateway, subnet, dns);
+#endif
+
 
   // Wait for connection
   int retries = 5;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
     WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
     Serial.print(retries);
-    delay(1000);
     int secondsTimeout = 10;
     while (WiFi.status() != WL_CONNECTED && secondsTimeout > 0) {
+      yield();
       delay(1000);
       Serial.print(".");
       secondsTimeout--;
