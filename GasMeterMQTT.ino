@@ -331,7 +331,7 @@ void setupWifi() {
   // byte bssid[] = { 0x8A, 0x2A, 0xA8, 0xCA, 0x0B, 0xE7 };  // the bssid can be the routers mac address - just "can"!
 
   // Wait for connection
-  int retries = 5;
+  int retries = 2;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
     //    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD, channel, bssid);
     WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
