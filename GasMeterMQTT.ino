@@ -191,7 +191,10 @@ void doNextState(State aNewState) {
     case state_setupWifi:
       {
         Log("state_setupWifi");
-        setupWifi();
+        if (!setupWifi()) {
+          setNextState(state_checkSensorData);
+          break;
+        }
         setNextState(state_setupOTA);
         break;
       }
@@ -314,7 +317,7 @@ void doNextState(State aNewState) {
 //   return 0;
 // }
 
-void setupWifi() {
+bool setupWifi() {
   WiFi.forceSleepWake();
   WiFi.mode(WIFI_STA);  // <<< Station
   delay(100);
@@ -350,7 +353,7 @@ void setupWifi() {
   if (retries == 0) {
     Log(CR_WIFI_SSID);
     Log("Connection failed!");
-    return;
+    return false;
   }
 
   Log("");
@@ -364,6 +367,7 @@ void setupWifi() {
   Log(WiFi.BSSIDstr());
 
   rssi = WiFi.RSSI();
+  return true;
 }
 
 void setupOTA() {
