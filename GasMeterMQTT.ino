@@ -122,6 +122,15 @@ int nextStateDelaySeconds = 0;
 
 unsigned long startTime;
 
+void mqttPublish(const char* mainTopic, const char* subTopic, String msg, bool retain = true) {
+  String topicString = String(mainTopic) + "/" + String(subTopic);
+  mqttClient.publish(topicString.c_str(), msg.c_str(), retain);
+  Log(">> Published message: ");
+  Log(topicString);
+  Log(" ");
+  Log(msg);
+}
+
 void setup() {
   startTime = millis();
   Serial.begin(115200);
@@ -149,6 +158,7 @@ void loop() {
   }
   delay(100);
 }
+
 void setNextState(State aNextState, int aNextStateDelaySeconds = 0) {
   nextState = aNextState;
   nextStateDelaySeconds = aNextStateDelaySeconds;
@@ -204,7 +214,7 @@ void doNextState(State aNewState) {
       {
         Log("state_receiveMqtt");
         // we process all retained mqtt messages (in callback)
-        for (int i = 0; i < 50; i++) {  // todo Hack - if more incoming messages are queued
+        for (int i = 0; i < 10; i++) {  // todo Hack - if more incoming messages are queued
           mqttClient.loop();
           delay(10);
           yield();
@@ -410,7 +420,9 @@ void setupMqtt() {
 
 void mqttReconnect() {
   // Loop until we're reconnected
-  while (!mqttClient.connected()) {
+  int maxRetries = 2;
+  int retries = 0;
+  while (!mqttClient.connected() && retries < maxRetries) {
     Log("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
@@ -431,21 +443,14 @@ void mqttReconnect() {
     } else {
       Log("failed, rc=");
       Log(mqttClient.state());
-      Log(" try again in 5 seconds");
-      // Wait 5 seconds before retrying
-      delay(5000);
+      Log(" try again in 2 seconds");
+      // Wait 2 seconds before retrying
+      delay(2000);
+      retries++;
     }
   }
 }
 
-void mqttPublish(const char* mainTopic, const char* subTopic, String msg) {
-  String topicString = String(mainTopic) + "/" + String(subTopic);
-  mqttClient.publish(topicString.c_str(), msg.c_str(), true);  //We send with "retain"
-  Log(">> Published message: ");
-  Log(topicString);
-  Log(" ");
-  Log(msg);
-}
 
 void mqttCallback(char* topic, byte* payload, unsigned int length) {
   Log();
@@ -473,12 +478,11 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       currentEEPROMAddress = 0;
       storeToEEPROM();
 
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "0");  // override retained mqtt message with 0 to prevent retriggering on next device restart
-      mqttClient.loop();
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
     }
+    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
   }
 
   subTopic = "waitForOTA";
@@ -487,8 +491,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         || str_payload.startsWith("no")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "false");
     }
+    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
   }
 
   subTopic = "voltageCalibration";
