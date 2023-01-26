@@ -530,15 +530,17 @@ void findLastEEPROMAddress() {
   Log("### EEPROM DUMP ###");
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
     // read a byte from the current address of the EEPROM
-    char value = EEPROM.read(currentEEPROMAddress);
-    Serial.print(currentEEPROMAddress);
-    Serial.print("\t");
-    Serial.print(value);
-    Serial.println();
+#ifdef debug
+    char value = EEPROM[currentEEPROMAddress];
+    Log(currentEEPROMAddress);
+    Log("\t");
+    Log(value);
+    Log();
+#endif
     // read until we find something different as MAGIC_BYTE
     // e.g. ########47110815#####...
     //              ^
-    if (value != MAGIC_BYTE) {
+    if (EEPROM[currentEEPROMAddress] != MAGIC_BYTE) {
       currentEEPROMAddress--;  // skip one byte back for start write offset
       break;
     }
@@ -569,9 +571,7 @@ void storeToEEPROM() {
 
   char buffer[10];
   sprintf(buffer, "%10lu", gasCounter.total_liter);
-  for (int i = 0; i < sizeofGasCounterLong; i++) {
-    EEPROM.put(currentEEPROMAddress + 1 + i, buffer[i]);
-  }
+  EEPROM.put(currentEEPROMAddress + 1, buffer);
 
   EEPROM.commit();
 }
@@ -585,14 +585,11 @@ void loadFromEEPROM() {
     Log("No MAGIC_BYTE found at ");
     Log(currentEEPROMAddress);
   } else {
-    String valueAsString = "";
-    for (int i = 0; i < sizeofGasCounterLong; i++) {
-      char c = EEPROM.read(currentEEPROMAddress + 1 + i);
-      valueAsString += c;
-    }
-    gasCounter.total_liter = valueAsString.toInt();  // returns long
-    Serial.print("loadFromEEPROM GasCounter: ");
-    Serial.println(gasCounter.total_liter);
+    char buffer[10];
+    EEPROM.get(currentEEPROMAddress + 1, buffer);
+    gasCounter.total_liter = String(buffer).toInt();  // returns long
+    Log("loadFromEEPROM GasCounter: ");
+    Log(gasCounter.total_liter);
   }
 
   if (gasCounter.total_liter < 0 || isnan(gasCounter.total_liter)) {
