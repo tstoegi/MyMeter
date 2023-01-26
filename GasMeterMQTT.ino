@@ -131,6 +131,7 @@ void mqttPublish(const char* mainTopic, const char* subTopic, String msg, bool r
   Log(topicString);
   Log(" ");
   Log(msg);
+  mqttClient.loop();
 }
 
 void setup() {
