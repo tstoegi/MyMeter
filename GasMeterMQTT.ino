@@ -501,8 +501,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
+    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
   }
 
   subTopic = "waitForOTA";
@@ -511,8 +511,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         || str_payload.startsWith("no")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
+    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
   }
 
   subTopic = "voltageCalibration";
@@ -521,6 +521,9 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Log("Calibrating voltage: ");
     Log(newValue);
     voltageCalibration = newValue;
+    if (newValue == 0.0) {
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+    }
   }
 }
 
