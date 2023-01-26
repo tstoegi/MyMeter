@@ -118,6 +118,8 @@ enum State {
   state_turnedOff = 9
 } nextState;
 
+bool mqttAvailable = false;
+
 int nextStateDelaySeconds = 0;
 
 unsigned long startTime;
@@ -209,7 +211,10 @@ void doNextState(State aNewState) {
       {
         Log("state_setupMqtt");
         setupMqtt();
-        mqttReconnect();
+        if (!mqttReconnect()) {
+          setNextState(state_checkSensorData);
+          break;
+        }
         setNextState(state_receiveMqtt);
         break;
       }
@@ -241,15 +246,15 @@ void doNextState(State aNewState) {
     case state_sendMqtt:
       {
         Log("state_sendMqtt");
-
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
+        if (mqttAvailable) {
+          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
+          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
+          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
 #ifdef debug
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
-        mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "localIP", WiFi.localIP().toString());
+          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
+          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "localIP", WiFi.localIP().toString());
 #endif
-
+        }
         setNextState(state_turningOff);
         break;
       }
@@ -422,7 +427,7 @@ void setupMqtt() {
   mqttClient.setCallback(mqttCallback);
 }
 
-void mqttReconnect() {
+bool mqttReconnect() {
   // Loop until we're reconnected
   int maxRetries = 2;
   int retries = 0;
@@ -444,6 +449,8 @@ void mqttReconnect() {
       Log(subTopic.c_str());
 
       mqttClient.loop();
+      mqttAvailable = true;
+      return true;
     } else {
       Log("failed, rc=");
       Log(mqttClient.state());
@@ -453,6 +460,8 @@ void mqttReconnect() {
       retries++;
     }
   }
+  mqttAvailable = false;
+  return false;
 }
 
 
