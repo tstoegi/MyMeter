@@ -222,7 +222,7 @@ void doNextState(State aNewState) {
       {
         Log("state_receiveMqtt");
         // we process all retained mqtt messages (in callback)
-        for (int i = 0; i < 10; i++) {  // todo Hack - if more incoming messages are queued
+        for (int i = 0; i < 50; i++) {  // todo Hack - if more incoming messages are queued
           mqttClient.loop();
           delay(10);
           yield();
@@ -494,8 +494,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
     }
-    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
   }
 
   subTopic = "waitForOTA";
@@ -504,8 +504,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         || str_payload.startsWith("no")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
     }
-    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
   }
 
   subTopic = "voltageCalibration";
