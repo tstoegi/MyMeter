@@ -124,9 +124,9 @@ int nextStateDelaySeconds = 0;
 
 unsigned long startTime;
 
-void mqttPublish(const char* mainTopic, const char* subTopic, String msg, bool retain = true) {
+void mqttPublish(const char* mainTopic, const char* subTopic, String msg) {
   String topicString = String(mainTopic) + "/" + String(subTopic);
-  mqttClient.publish(topicString.c_str(), msg.c_str(), retain);
+  mqttClient.publish(topicString.c_str(), msg.c_str(), true);
   Log(">> Published message: ");
   Log(topicString);
   Log(" ");
@@ -266,6 +266,12 @@ void doNextState(State aNewState) {
         delay(10);
         digitalWrite(LED_BUILTIN, true);
         delay(1000);
+
+        static unsigned long prevMillis = millis();
+        if (millis() - prevMillis >= 60 * 1000) {
+          Log("OTA timed out - we restart");
+          ESP.restart();
+        }
         break;
       }
     case state_turningOff:
@@ -495,7 +501,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
   }
 
@@ -505,7 +511,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
         || str_payload.startsWith("no")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "", false);  // delete the retained mqtt message
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
   }
 
