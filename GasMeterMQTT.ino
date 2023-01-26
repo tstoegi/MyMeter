@@ -47,12 +47,12 @@ elpmaxe ***/
 
 #include <ArduinoOTA.h>
 
-#define STATIC_IP // optional - if you want to use a static IP (for faster WiFi connection)
+#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
-  IPAddress ip(192, 168, 4, 87);
-  IPAddress gateway(192, 168, 4, 1);
-  IPAddress subnet(255, 255, 255, 0);
-  IPAddress dns(192, 168, 4, 1);
+IPAddress ip(192, 168, 4, 87);
+IPAddress gateway(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(192, 168, 4, 1);
 #endif
 
 #include <MicroWakeupper.h>
