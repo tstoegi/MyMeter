@@ -7,26 +7,26 @@
 ---
 
 There are different gasmeters in the wild - usually one with 
-a) an internal magnet that is turing around - so we use a reed switch for counting each turnaround
+a) an internal magnet that is turning around on each cycle - so we can use a reed switch for counting
 or
-b) an internal metal plate is turing around - so we use a proximity sensor LJ12A3-4-Z/BX 5V for counting each turnaround
+b) an internal metal plate is turning around on each cycle - so we can use a proximity sensor LJ12A3-4-Z/BX 5V
 
 Usually one turn around is euqal to 0,01m3 (or 10 liters) of gas - check your gasmeter.
 
 The stacked MicroWakeupper shield is turning your Wemos D1 mini on and off. Recommended: onboard jumper J1 cutted!
   
-The firmware will count each cycle, write the total amount to eeprom and sent a mqtt message to your broker with the total amount of gas (total).
+tldr; The firmware will count each cycle, write the total amount to eeprom and sent a mqtt message to your broker with the total amount of gas (total).
   
 ## Setup/Installation
 1. Install the MicroWakeupper library (https://github.com/tstoegi/MicroWakeupper) to your Arduino IDE 
 2. Update the sketch code: Setup your custom config data within the lines // $$$config$$$
 3. Connect a Wemos D1 mini (or pro, with external antenna) via USB and upload the code (if the MicroWakeupper shield if already stacked, you have to press the onboard FLASH button during upload) 
    
-   -> OTA: If the firmware is already installed, you can use OTA updates by setting (with retain) the mqtt value "/settings/turningOff" to "false" once. OTA only works as long as the Wemos is on.)
+   -> OTA: If the firmware is already installed, you can use OTA updates by setting (with retain) a mqtt msg/value "/settings/waitForOTA" to "true" once. OTA will be available for one minute.
   
-Warning: As long as you power the Wemos via USB (or external VIN) the MicroWakeupper shield cannot turn it off
+Warning: As long as you power the Wemos via USB (or external VIN) the MicroWakeupper shield cannot turn it off.
 
-All mqtt messages from the client (Wemos) are sent with flag "retain" - so you see the last messages, even if the device is currently off.
+All mqtt messages from the client (Wemos) are sent with flag "retain" - so you see the last messages, even if the device is off.
   
 ## faq
 Q: Where can I buy the MicroWakeupper battery shield?
@@ -35,15 +35,15 @@ A: My store: https://www.tindie.com/stores/moreiolabs/
 
 Q: How can I set an initial counter value?
 <br>
-A: Just send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total" e.g. "202.23" - after receiving there is a response with "0" and the normal counter "total" should be up to date
+A: Just send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/total" e.g. "202.23" - after receiving that message is removed and you should see the new value.
 
 Q: How can I install OTA update (via Arduino IDE)?
 <br>
-A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/waitForOTA" and "true" - after message receiving the Wemos will stay online (until the next restart or external reset!). You will see a OTA device named "gasmeter_ip_address".
+A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/waitForOTA" with "true" - after receiving that message is removed and you will see the OTA device named "[device_name]_[ip_address]".
 
 Q: How can I adjust (calibrate) the battery voltage value?
 <br>
-A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/voltageCalibration" e.g. "+0.3" or "-0.5" volt
+A: Send/publish a mqtt message (with retain!) to "haus/gasmeter/settings/voltageCalibration" e.g. "+0.3" or "-0.5" volt - the message has to stay there!
 
 (c) 2022, 2023 @tstoegi, Tobias Stöger, MIT license
   
