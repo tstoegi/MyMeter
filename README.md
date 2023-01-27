@@ -19,7 +19,7 @@ tldr; The firmware will count each cycle, write the total amount to eeprom and s
   
 ## Setup/Installation
 1. Install the MicroWakeupper library (https://github.com/tstoegi/MicroWakeupper) to your Arduino IDE 
-2. Update the sketch code: Setup your custom config data within the lines // $$$config$$$
+2. Update the sketch file "config.h" with your custom setup
 3. Connect a Wemos D1 mini (or pro, with external antenna) via USB and upload the code (if the MicroWakeupper shield if already stacked, you have to press the onboard FLASH button during upload) 
    
    -> OTA: If the firmware is already installed, you can use OTA updates by setting (with retain) a mqtt msg/value "/settings/waitForOTA" to "true" once. OTA will be available for one minute.

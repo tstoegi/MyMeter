@@ -8,7 +8,7 @@
 
 #include <Arduino.h>
 
-#include <Credentials.h>  // located (or create one) in folder "Arduino/libraries/Credentials/"
+#include <Credentials.h>  // located (or create a new one) in folder "Arduino/libraries/Credentials/"
 /*** example of a Credentials.h file
 
 // your wifi
@@ -28,14 +28,7 @@
 
 elpmaxe ***/
 
-
-// $$$config$$$
-#define CO_MQTT_BROKER_IP "192.168.4.79"
-#define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
-#define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
-#define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings"  // we subscribe to + "/#"
-#define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
-// $$$config$$$
+#include "config.h"  // located in the sketch folder - open the file and define your settings
 
 #define versionString "0.4.20230127.1"
 
@@ -72,7 +65,7 @@ elpmaxe ***/
 
 //#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
-IPAddress ip(192, 168, 4, 87);
+IPAddress ip(192, 168, 4, 88);
 IPAddress gateway(192, 168, 4, 1);
 IPAddress subnet(255, 255, 255, 0);
 IPAddress dns(192, 168, 4, 1);
@@ -242,12 +235,12 @@ void doNextState(State aNewState) {
       {
         Log("state_sendMqtt");
         if (mqttAvailable) {
-          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
-          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "wifi_rssi", String(rssi));
-          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
+          mqttPublish(CO_MQTT_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
+          mqttPublish(CO_MQTT_TOPIC_PUB, "wifi_rssi", String(rssi));
+          mqttPublish(CO_MQTT_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
 #ifdef debug
-          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "version", versionString);
-          mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, "localIP", WiFi.localIP().toString());
+          mqttPublish(CO_MQTT_TOPIC_PUB, "version", versionString);
+          mqttPublish(CO_MQTT_TOPIC_PUB, "localIP", WiFi.localIP().toString());
 #endif
         }
         setNextState(state_turningOff);
@@ -441,7 +434,7 @@ bool mqttReconnect() {
     Log("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
-    String clientId = CO_MQTT_GASMETER_CLIENT_ID_PREFIX + WiFi.localIP().toString();
+    String clientId = CO_MQTT_CLIENT_ID_PREFIX + WiFi.localIP().toString();
     Log("MQTT_CLIENT_ID: ");
     Log(clientId);
 
@@ -449,7 +442,7 @@ bool mqttReconnect() {
     if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
       Log("connected");
 
-      String subTopic = String(CO_MQTT_GASMETER_TOPIC_SUB) + "/#";
+      String subTopic = String(CO_MQTT_TOPIC_SUB) + "/#";
       mqttClient.subscribe(subTopic.c_str());
       Log("mqtt subscription topic: ");
       Log(subTopic.c_str());
@@ -499,8 +492,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(CO_MQTT_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
+      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
@@ -513,7 +506,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       turningOff = false;
       setupOTA();
       otaEnabled = true;
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
@@ -525,7 +518,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     Log(newValue);
     voltageCalibration = newValue;
     if (newValue == 0.0) {
-      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
