@@ -30,7 +30,7 @@ elpmaxe ***/
 
 
 // $$$config$$$
-#define CO_MQTT_BROKER_IP "192.168.4.3"
+#define CO_MQTT_BROKER_IP "192.168.4.79"
 #define CO_MQTT_BROKER_PORT 8883  // 8883 via SSL/TLS, 1883 plain
 #define CO_MQTT_GASMETER_TOPIC_PUB "haus/gasmeter"
 #define CO_MQTT_GASMETER_TOPIC_SUB "haus/gasmeter/settings"  // we subscribe to + "/#"
@@ -108,7 +108,6 @@ float voltageCalibration = 0.0;
 enum State {
   state_startup = 0,
   state_setupWifi = 1,
-  state_setupOTA = 2,
   state_setupMqtt = 3,
   state_receiveMqtt = 4,
   state_checkSensorData = 5,
@@ -117,6 +116,8 @@ enum State {
   state_turningOff = 8,
   state_turnedOff = 9
 } nextState;
+
+bool otaEnabled = false;
 
 bool mqttAvailable = false;
 
@@ -150,7 +151,7 @@ void setup() {
 }
 
 void loop() {
-  if (nextState > state_setupOTA) {
+  if (otaEnabled) {
     ArduinoOTA.handle();
   }
 
@@ -198,13 +199,6 @@ void doNextState(State aNewState) {
           setNextState(state_checkSensorData);
           break;
         }
-        setNextState(state_setupOTA);
-        break;
-      }
-    case state_setupOTA:
-      {
-        Log("state_setupOTA");
-        setupOTA();
         setNextState(state_setupMqtt);
         break;
       }
@@ -269,8 +263,9 @@ void doNextState(State aNewState) {
 
         static unsigned long prevMillis = millis();
         if (millis() - prevMillis >= 60 * 1000) {
-          Log("OTA timed out - we restart");
-          ESP.restart();
+          Log("OTA timed out!");
+          turningOff = true;
+          setNextState(state_turningOff);
         }
         break;
       }
@@ -280,6 +275,7 @@ void doNextState(State aNewState) {
           setNextState(state_idle);
           break;
         }
+        Log("state_turningOff");
 
         digitalWrite(LED_BUILTIN, true);  // turn led off
         increaseEEPROMAddress();
@@ -501,18 +497,22 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
       mqttPublish(CO_MQTT_GASMETER_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
-    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+    return;
   }
 
   subTopic = "waitForOTA";
   if (String(topic).endsWith(subTopic)) {
     if (str_payload.startsWith("true")
-        || str_payload.startsWith("no")) {
+        || str_payload.startsWith("yes")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
+      setupOTA();
+      otaEnabled = true;
+      mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
-    mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+    return;
   }
 
   subTopic = "voltageCalibration";
@@ -524,6 +524,7 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
     if (newValue == 0.0) {
       mqttPublish(CO_MQTT_GASMETER_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
     }
+    return;
   }
 }
 
