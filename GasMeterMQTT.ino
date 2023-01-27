@@ -327,7 +327,10 @@ void doNextState(State aNewState) {
 
 bool setupWifi() {
   WiFi.forceSleepWake();
+  WiFi.persistent(false);
   WiFi.mode(WIFI_STA);  // <<< Station
+  //WiFi.setPhyMode(WIFI_PHY_MODE_11G);
+  //WiFi.setOutputPower(20.5); // max
   delay(100);
 
 #ifdef STATIC_IP
