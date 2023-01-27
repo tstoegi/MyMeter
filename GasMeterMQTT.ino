@@ -37,7 +37,7 @@ elpmaxe ***/
 #define CO_MQTT_GASMETER_CLIENT_ID_PREFIX "gasmeter_"        // + ip address added by code
 // $$$config$$$
 
-#define versionString "0.4.20230126"
+#define versionString "0.4.20230127.1"
 
 #include <EEPROM.h>
 
