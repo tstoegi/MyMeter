@@ -28,7 +28,7 @@
 
 elpmaxe ***/
 
-#include "config.h"  // located in the sketch folder - open the file and define your settings
+#include "config.h"  // located in the sketch folder - edit the file and define your settings
 
 #define versionString "0.4.20230127.1"
 
@@ -61,14 +61,6 @@ elpmaxe ***/
 #else
 #define Log(str)
 #define Logf(str, param)
-#endif
-
-//#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
-#ifdef STATIC_IP
-IPAddress ip(192, 168, 4, 88);
-IPAddress gateway(192, 168, 4, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(192, 168, 4, 1);
 #endif
 
 #include <MicroWakeupper.h>

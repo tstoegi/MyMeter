@@ -3,3 +3,11 @@
 #define CO_MQTT_TOPIC_PUB "haus/gasmeter"   // mqtt folder (readonly)
 #define CO_MQTT_TOPIC_SUB "haus/gasmeter/settings"  // mqtt folder for settings/config, e.g. waitForOTA, total or voltageCalibration
 #define CO_MQTT_CLIENT_ID_PREFIX "gasmeter_"        // mqtt client id (+ip address added at runtime), e.g. "gasmeter_192.168.1.69"
+
+//#define STATIC_IP  // optional - if you want to use a static IP (for faster WiFi connection)
+#ifdef STATIC_IP
+IPAddress ip(192, 168, 4, 88);
+IPAddress gateway(192, 168, 4, 1);
+IPAddress subnet(255, 255, 255, 0);
+IPAddress dns(192, 168, 4, 1);
+#endif
