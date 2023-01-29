@@ -39,8 +39,10 @@ elpmaxe ***/
 
 #include "config.h"  // located in the sketch folder - edit the file and define your settings
 
-//#define debug  // enable or disable debug messages
-#ifdef debug
+const char *pubTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME;
+const char *subTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME CO_MQTT_TOPIC_SUB_FOLDER_SUB;
+
+#if debug == true
 #define Log(str) \
   Serial.print(__LINE__); \
   Serial.print(' '); \
@@ -109,7 +111,7 @@ int nextStateDelaySeconds = 0;
 
 unsigned long startTime;
 
-void mqttPublish(const char* mainTopic, const char* subTopic, String msg) {
+void mqttPublish(const char *mainTopic, const char *subTopic, String msg) {
   String topicString = String(mainTopic) + "/" + String(subTopic);
   mqttClient.publish(topicString.c_str(), msg.c_str(), true);
   Log(">> Published message: ");
@@ -226,12 +228,12 @@ void doNextState(State aNewState) {
       {
         Log("state_sendMqtt");
         if (mqttAvailable) {
-          mqttPublish(CO_MQTT_TOPIC_PUB, "total", String(gasCounter.total_liter / 1000.0f));
-          mqttPublish(CO_MQTT_TOPIC_PUB, "wifi_rssi", String(rssi));
-          mqttPublish(CO_MQTT_TOPIC_PUB, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
-#ifdef debug
-          mqttPublish(CO_MQTT_TOPIC_PUB, "version", versionString);
-          mqttPublish(CO_MQTT_TOPIC_PUB, "localIP", WiFi.localIP().toString());
+          mqttPublish(pubTopic, "total", String(gasCounter.total_liter / 1000.0f));
+          mqttPublish(pubTopic, "wifi_rssi", String(rssi));
+          mqttPublish(pubTopic, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
+#if debug == true
+          mqttPublish(pubTopic, "version", versionString);
+          mqttPublish(pubTopic, "localIP", WiFi.localIP().toString());
 #endif
         }
         setNextState(state_turningOff);
@@ -425,7 +427,7 @@ bool mqttReconnect() {
     Log("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
-    String clientId = CO_MQTT_CLIENT_ID_PREFIX + WiFi.localIP().toString();
+    String clientId = CO_MYMETER_NAME + WiFi.localIP().toString();
     Log("MQTT_CLIENT_ID: ");
     Log(clientId);
 
@@ -433,10 +435,10 @@ bool mqttReconnect() {
     if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
       Log("connected");
 
-      String subTopic = String(CO_MQTT_TOPIC_SUB) + "/#";
-      mqttClient.subscribe(subTopic.c_str());
+      String subTopicStr = String(subTopic) + "/#";
+      mqttClient.subscribe(subTopicStr.c_str());
       Log("mqtt subscription topic: ");
-      Log(subTopic.c_str());
+      Log(subTopicStr.c_str());
 
       mqttClient.loop();
       mqttAvailable = true;
@@ -455,7 +457,7 @@ bool mqttReconnect() {
 }
 
 
-void mqttCallback(char* topic, byte* payload, unsigned int length) {
+void mqttCallback(char *topic, byte *payload, unsigned int length) {
   Log();
   Log("<< Received message: ");
   Log(topic);
@@ -469,8 +471,8 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
   String str_payload = String(buff_p);
   Log(str_payload);
 
-  String subTopic = "total";
-  if (String(topic).endsWith(subTopic)) {
+  String subTopicKey = "total";
+  if (String(topic).endsWith(subTopicKey)) {
     float newValue = str_payload.toFloat();
     if (newValue > 0) {
       Log("Override value total: ");
@@ -483,33 +485,33 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 
       Log(">>>");
       Log(String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_TOPIC_PUB, subTopic.c_str(), String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(pubTopic, subTopicKey.c_str(), String(gasCounter.total_liter / 1000.0f));
+      mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
 
-  subTopic = "waitForOTA";
-  if (String(topic).endsWith(subTopic)) {
+  subTopicKey = "waitForOTA";
+  if (String(topic).endsWith(subTopicKey)) {
     if (str_payload.startsWith("true")
         || str_payload.startsWith("yes")) {
       Log("Disabling temporarly turningOff/deepSleep");
       turningOff = false;
       setupOTA();
       otaEnabled = true;
-      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
 
-  subTopic = "voltageCalibration";
-  if (String(topic).endsWith(subTopic)) {
+  subTopicKey = "voltageCalibration";
+  if (String(topic).endsWith(subTopicKey)) {
     float newValue = str_payload.toFloat();
     Log("Calibrating voltage: ");
     Log(newValue);
     voltageCalibration = newValue;
     if (newValue == 0.0) {
-      mqttPublish(CO_MQTT_TOPIC_SUB, subTopic.c_str(), "");  // delete the retained mqtt message
+      mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
     }
     return;
   }
@@ -545,7 +547,7 @@ void findLastEEPROMAddress() {
   Log("### EEPROM DUMP ###");
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
     // read a byte from the current address of the EEPROM
-#ifdef debug
+#if debug == true
     char value = EEPROM[currentEEPROMAddress];
     Log(currentEEPROMAddress);
     Log("\t");
