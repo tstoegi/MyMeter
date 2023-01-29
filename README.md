@@ -1,17 +1,22 @@
-# Arduino gasmeter monitoring for Wemos D1 Mini (and battery shield) with mqtt support
+# Arduino energy and gas meter monitoring with a Wemos D1 Mini over mqtt
+
+::: energy meter :::
+// todo - with a ir-sensor ... coming next
+
   
+::: gas meter ::: 
 - Setup A (recommended for battery): Reed switch connected to SWITCH OUT/IN on a MicroWakeupper battery shield (stacked to a Wemos D1 mini)
 
 - Setup B (external power/USB): Inductive proximity sensor LJ12A3-4-Z/BX 5V connected with signal line to SWITCH IN (common GND) on a MicroWakeupper battery shield (stacked to a Wemos D1 mini). The sensor usually consumes about 50mA (always on).
   
 ---
 
-There are different gasmeters in the wild - usually one with 
+There are different gas meters in the wild - usually one with 
 a) an internal magnet that is turning around on each cycle - so we can use a reed switch for counting
 or
 b) an internal metal plate is turning around on each cycle - so we can use a proximity sensor LJ12A3-4-Z/BX 5V
 
-Usually one turn around is euqal to 0,01m3 (or 10 liters) of gas - check your gasmeter.
+Usually one turn around is euqal to 0,01m3 (or 10 liters) of gas - check your gas meter.
 
 The stacked MicroWakeupper shield is turning your Wemos D1 mini on and off. Recommended: onboard jumper J1 cutted!
   
