@@ -28,8 +28,6 @@
 
 elpmaxe ***/
 
-#include "config.h"  // located in the sketch folder - edit the file and define your settings
-
 #define versionString "0.4.20230127.1"
 
 #include <EEPROM.h>
@@ -39,6 +37,7 @@ elpmaxe ***/
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 
+#include "config.h"  // located in the sketch folder - edit the file and define your settings
 
 //#define debug  // enable or disable debug messages
 #ifdef debug
@@ -322,18 +321,18 @@ bool setupWifi() {
   WiFi.config(ip, gateway, subnet, dns);
 #endif
 
-  // expert-mode ;-) if you want to use bssid and channel for faster WiFi connection
-  // see also WiFi.begin(...)
-  // int channel = getWiFiChannel(CR_WIFI_SSID);
-  // Log("WiFi channel id: ");
-  // Log(channel);
-  // byte bssid[] = { 0x8A, 0x2A, 0xA8, 0xCA, 0x0B, 0xE7 };  // the bssid can be the routers mac address - just "can"!
-
   // Wait for connection
   int retries = 2;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
-    //    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD, channel, bssid);
+#ifdef STATIC_WIFI
+    Log("Trying WiFi channel id: ");
+    Log(channel);
+    Log("Trying WiFi BSSID: ");
+    Log(bssid);
+    WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD, channel, bssid);
+#else
     WiFi.begin(CR_WIFI_SSID, CR_WIFI_PASSWORD);
+#endif
     Log(retries);
     int secondsTimeout = 10;
     while (WiFi.status() != WL_CONNECTED && secondsTimeout > 0) {
