@@ -1,5 +1,6 @@
 /***************************************************************************
-  Gasmeter tracking with Wemos D1 mini, MicroWakeupper battery shield and reed switch or proximity sensor
+  MyMeter energy or gas tracking with Wemos D1 mini and a 
+  MicroWakeupper battery shield with reed switch or proximity sensor
   (see README.md for setup/installation)
 
   (c) 2022, 2023 @tstoegi, Tobias Stöger , MIT license
@@ -16,15 +17,14 @@
 #define CR_WIFI_PASSWORD "wifi_password"
 
 // ota - over the air firmware updates - userid and password of your choise
-#define CR_OTA_GASMETER_CLIENT_ID_PREFIX "gasmeter_"
-#define CR_OTA_GASMETER_CLIENT_PASSWORD "0123456789"
+#define CR_OTA_MYMETER_CLIENT_PASSWORD "0123456789"
 
 // your mqtt server cert fingerprint -> use "" if you want to disable cert checking
 #define CR_MQTT_BROKER_CERT_FINGERPRINT "AA F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 00"
 
 // your mqtt user and password as created on the server side
-#define CR_MQTT_BROKER_GASMETER_USER "gasmeter"
-#define CR_MQTT_BROKER_GASMETER_PASSWORD "0123456789"
+#define CR_MQTT_BROKER_MYMETER_USER "mymeter"
+#define CR_MQTT_BROKER_MYMETER_PASSWORD "0123456789"
 
 elpmaxe ***/
 
@@ -72,15 +72,15 @@ WiFiClientSecure espClient;
 PubSubClient mqttClient(espClient);
 char msg[50];
 
-const long one_turnaround_liter = 10;  // one complete round 10 liter of gas (or 0.01 m3)
+const long one_turnaround = 10;  // For gas: one complete round 10 liter of gas (or 0.01 m3)
 
-struct GasCounter {
-  long total_liter;
+struct MyCounter {
+  long total;
 };
-GasCounter gasCounter = { 0 };  // initial value can be set via mqtt retain message - see readme
+MyCounter myCounter = { 0 };  // initial value can be set via mqtt retain message - see readme
 
 // we store the new value in EEPROM always at currentEEPROMAddress+1 to spread max write-life-cycles of the whole EEPROM - at the end we start from 0 again
-int sizeofGasCounterLong = 10;
+int sizeofMyCounterLong = 10;
 
 int currentEEPROMAddress = 0;  // first address we try to read a valid value
 #define MAGIC_BYTE '#'         // start mark of our value in EEPROM "#1234567890" or "#  14567800" (max 10 digits)
@@ -129,7 +129,7 @@ void setup() {
 
   delay(100);
 
-  Serial.println("\n*** Gasmeter Monitoring ***");
+  Serial.println("\n*** MyMeter Monitoring ***");
   Serial.println(versionString);
 
   nextState = state_startup;
@@ -215,10 +215,10 @@ void doNextState(State aNewState) {
         Log("state_checkSensorData");
 
         if (launchedByMicroWakeupperEvent) {
-          Log(gasCounter.total_liter);
-          gasCounter.total_liter = gasCounter.total_liter + one_turnaround_liter;
-          Log(one_turnaround_liter);
-          Log(gasCounter.total_liter);
+          Log(myCounter.total);
+          myCounter.total = myCounter.total + one_turnaround;
+          Log(one_turnaround);
+          Log(myCounter.total);
           setNextState(state_sendMqtt);
         } else {
           setNextState(state_turningOff);
@@ -228,7 +228,7 @@ void doNextState(State aNewState) {
       {
         Log("state_sendMqtt");
         if (mqttAvailable) {
-          mqttPublish(pubTopic, "total", String(gasCounter.total_liter / 1000.0f));
+          mqttPublish(pubTopic, "total", String(myCounter.total / 1000.0f));
           mqttPublish(pubTopic, "wifi_rssi", String(rssi));
           mqttPublish(pubTopic, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
 #if debug == true
@@ -370,13 +370,13 @@ bool setupWifi() {
 void setupOTA() {
   String localIPWithoutDots = WiFi.localIP().toString();
   localIPWithoutDots.replace(".", "_");
-  String ota_client_id = CR_OTA_GASMETER_CLIENT_ID_PREFIX + localIPWithoutDots;
+  String ota_client_id = CO_MYMETER_NAME + localIPWithoutDots;
   Log("OTA_CLIENT_ID: ");
   Log(ota_client_id);
 
   ArduinoOTA.setHostname(ota_client_id.c_str());
 
-  ArduinoOTA.setPassword(CR_OTA_GASMETER_CLIENT_PASSWORD);
+  ArduinoOTA.setPassword(CR_OTA_MYMETER_CLIENT_PASSWORD);
 
   ArduinoOTA.onStart([]() {
     Log("Start");
@@ -432,7 +432,7 @@ bool mqttReconnect() {
     Log(clientId);
 
     // Attempt to connect
-    if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_GASMETER_USER, CR_MQTT_BROKER_GASMETER_PASSWORD)) {
+    if (mqttClient.connect(clientId.c_str(), CR_MQTT_BROKER_MYMETER_USER, CR_MQTT_BROKER_MYMETER_PASSWORD)) {
       Log("connected");
 
       String subTopicStr = String(subTopic) + "/#";
@@ -477,15 +477,15 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     if (newValue > 0) {
       Log("Override value total: ");
       Log(newValue);
-      gasCounter.total_liter = newValue * 1000.0f;
+      myCounter.total = newValue * 1000.0f;
 
       formatEEPROM();
       currentEEPROMAddress = 0;
       storeToEEPROM();
 
       Log(">>>");
-      Log(String(gasCounter.total_liter / 1000.0f));
-      mqttPublish(pubTopic, subTopicKey.c_str(), String(gasCounter.total_liter / 1000.0f));
+      Log(String(myCounter.total / 1000.0f));
+      mqttPublish(pubTopic, subTopicKey.c_str(), String(myCounter.total / 1000.0f));
       mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
     }
     return;
@@ -573,7 +573,7 @@ void findLastEEPROMAddress() {
 
 void increaseEEPROMAddress() {
   currentEEPROMAddress++;
-  if (currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX - sizeofGasCounterLong) {
+  if (currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX - sizeofMyCounterLong) {
     // we start from the beginning
     currentEEPROMAddress = 0;
   }
@@ -582,12 +582,12 @@ void increaseEEPROMAddress() {
 }
 
 void storeToEEPROM() {
-  Log("storeToEEPROM GasCounter: ");
-  Log(gasCounter.total_liter);
+  Log("storeToEEPROM MyCounter: ");
+  Log(myCounter.total);
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
 
   char buffer[10];
-  sprintf(buffer, "%10lu", gasCounter.total_liter);
+  sprintf(buffer, "%10lu", myCounter.total);
   EEPROM.put(currentEEPROMAddress + 1, buffer);
 
   EEPROM.commit();
@@ -604,13 +604,13 @@ void loadFromEEPROM() {
   } else {
     char buffer[10];
     EEPROM.get(currentEEPROMAddress + 1, buffer);
-    gasCounter.total_liter = String(buffer).toInt();  // returns long
-    Log("loadFromEEPROM GasCounter: ");
-    Log(gasCounter.total_liter);
+    myCounter.total = String(buffer).toInt();  // returns long
+    Log("loadFromEEPROM MyCounter: ");
+    Log(myCounter.total);
   }
 
-  if (gasCounter.total_liter < 0 || isnan(gasCounter.total_liter)) {
-    Log("!!! Resetting gasCounter.total_liter to 0");
-    gasCounter.total_liter = 0;
+  if (myCounter.total < 0 || isnan(myCounter.total)) {
+    Log("!!! Resetting myCounter.total to 0");
+    myCounter.total = 0;
   }
 }
