@@ -28,7 +28,7 @@
 
 elpmaxe ***/
 
-#define versionString "0.5.20230129.2"
+#define versionString "0.6.20230201.1"
 
 #include <EEPROM.h>
 
