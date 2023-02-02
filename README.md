@@ -2,9 +2,11 @@
 
 ::: energy meter :::
 This is how your basic setup should look like if you use a IR Sensor breakout board to count each cycle.
+```
 RED - VIN - SWITCH_OUT (3V3)
 BLACK - GND
 ORANGE - SIGNAL - SWITCH_IN
+```
 
 ![Alt IR Sensor Setup](pics/IRSensor.jpeg "IR Sensor")
   
