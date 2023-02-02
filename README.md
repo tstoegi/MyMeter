@@ -1,8 +1,12 @@
 # Arduino energy and gas meter monitoring with a Wemos D1 Mini over mqtt
 
 ::: energy meter :::
-// todo - with a ir-sensor ... coming next
+This is how your basic setup should look like if you use a IR Sensor breakout board to count each cycle.
+RED - VIN - SWITCH_OUT (3V3)
+BLACK - GND
+ORANGE - SIGNAL - SWITCH_IN
 
+![Alt IR Sensor Setup](pics/IRSensor.jpeg "IR Sensor")
   
 ::: gas meter ::: 
 - Setup A (recommended for battery): Reed switch connected to SWITCH OUT/IN on a MicroWakeupper battery shield (stacked to a Wemos D1 mini)
