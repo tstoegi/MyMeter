@@ -19,4 +19,8 @@ byte bssid[] = { 0x81, 0x2A, 0xA2, 0x1A, 0x0B, 0xE7 };  // the bssid can be your
 int channel = 1;                                        // try to find out your channel id with getWiFiChannel(CR_WIFI_SSID);
 #endif
 
-#define debug false  // true = enable debug messages (and much slower processing), or false = disable debug messages
+// uncomment for enabling serial debug messages (and much slower processing)
+//#define DEBUG
+
+// uncomment for enabling mqtt tls support
+//#define MQTT_TLS

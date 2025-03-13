@@ -3,14 +3,15 @@
   MicroWakeupper battery shield with reed switch or proximity sensor
   (see README.md for setup/installation)
 
-  (c) 2022, 2023 @tstoegi, Tobias Stöger , MIT license
+  (c) 2022-2024 @tstoegi, Tobias Stöger , MIT license
  ***************************************************************************/
 
 
 #include <Arduino.h>
 
-#include <Credentials.h>  // located (or create a new one) in folder "Arduino/libraries/Credentials/"
-/*** example of a Credentials.h file
+#include <Credentials.h>  // should be (created) in folder "Arduino/libraries/Credentials/"
+// ... or uncomment here for inline
+/*** example of Credentials.h
 
 // your wifi
 #define CR_WIFI_SSID "wifi_ssid"
@@ -26,9 +27,11 @@
 #define CR_MQTT_BROKER_MYMETER_USER "mymeter"
 #define CR_MQTT_BROKER_MYMETER_PASSWORD "0123456789"
 
-elpmaxe ***/
+*/
+// <<< elpmaxe
 
-#define versionString "0.6.20230201.1"
+
+#define versionString "0.7.20240312.2"
 
 #include <EEPROM.h>
 
@@ -42,7 +45,7 @@ elpmaxe ***/
 const char *pubTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME;
 const char *subTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME CO_MQTT_TOPIC_SUB_FOLDER_SUB;
 
-#if debug == true
+#ifdef DEBUG
 #define Log(str) \
   Serial.print(__LINE__); \
   Serial.print(' '); \
@@ -68,7 +71,11 @@ const char *subTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME CO_MQTT_TOP
 MicroWakeupper microWakeupper;  //MicroWakeupper instance (only one is supported!)
 bool launchedByMicroWakeupperEvent = false;
 
+#ifdef MQTT_TLS
 WiFiClientSecure espClient;
+#else
+WiFiClient espClient;
+#endif
 PubSubClient mqttClient(espClient);
 char msg[50];
 
@@ -165,7 +172,7 @@ void doNextState(State aNewState) {
         pinMode(LED_BUILTIN, OUTPUT);
         digitalWrite(LED_BUILTIN, true);  // turn led off
 
-        findLastEEPROMAddress();
+        findLastUsedEEPROMAddress();
 
         loadFromEEPROM();
 
@@ -231,7 +238,7 @@ void doNextState(State aNewState) {
           mqttPublish(pubTopic, "total", String(myCounter.total / 1000.0f));
           mqttPublish(pubTopic, "wifi_rssi", String(rssi));
           mqttPublish(pubTopic, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
-#if debug == true
+#ifdef DEBUG
           mqttPublish(pubTopic, "version", versionString);
           mqttPublish(pubTopic, "localIP", WiFi.localIP().toString());
 #endif
@@ -267,10 +274,6 @@ void doNextState(State aNewState) {
         increaseEEPROMAddress();
         storeToEEPROM();
         EEPROM.end();
-
-        Serial.println();
-        Serial.println(millis() - startTime);
-        Serial.println();
 
         Log("Waiting for turning device off (only if jumper J1 on MicroWakeupperShield is cutted!)");
         microWakeupper.reenable();
@@ -407,6 +410,8 @@ void setupOTA() {
 }
 
 void setupMqtt() {
+
+#ifdef MQTT_TLS
   if (strlen(CR_MQTT_BROKER_CERT_FINGERPRINT) > 0) {
     Log("Setting mqtt server fingerprint");
     espClient.setFingerprint(CR_MQTT_BROKER_CERT_FINGERPRINT);
@@ -414,6 +419,8 @@ void setupMqtt() {
     Log("No fingerprint verification for mqtt");
     espClient.setInsecure();
   }
+#endif
+
   mqttClient.setBufferSize(512);
   mqttClient.setServer(CO_MQTT_BROKER_IP, CO_MQTT_BROKER_PORT);
   mqttClient.setCallback(mqttCallback);
@@ -474,7 +481,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
   String subTopicKey = "total";
   if (String(topic).endsWith(subTopicKey)) {
     float newValue = str_payload.toFloat();
-    if (newValue > 0) {
+    if (!isnan(newValue) && newValue > 0 && newValue < 1e9) {  // Reasonable max value
       Log("Override value total: ");
       Log(newValue);
       myCounter.total = newValue * 1000.0f;
@@ -487,6 +494,9 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
       Log(String(myCounter.total / 1000.0f));
       mqttPublish(pubTopic, subTopicKey.c_str(), String(myCounter.total / 1000.0f));
       mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
+    } else {
+      Log("Invalid MQTT total ignored:");
+      Log(str_payload);
     }
     return;
   }
@@ -541,15 +551,18 @@ void formatEEPROM() {
       Log(i);
     }
   }
+  EEPROM.commit();
 }
 
-void findLastEEPROMAddress() {
+void findLastUsedEEPROMAddress() {
   Log("### EEPROM DUMP ###");
+
   for (; currentEEPROMAddress < EEPROM_SIZE_BYTES_MAX; currentEEPROMAddress++) {
     // read a byte from the current address of the EEPROM
-#if debug == true
+#ifdef DEBUG
     char value = EEPROM[currentEEPROMAddress];
     Log(currentEEPROMAddress);
+
     Log("\t");
     Log(value);
     Log();
@@ -573,8 +586,8 @@ void findLastEEPROMAddress() {
 
 void increaseEEPROMAddress() {
   currentEEPROMAddress++;
-  if (currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX - sizeofMyCounterLong) {
-    // we start from the beginning
+  if (currentEEPROMAddress + sizeofMyCounterLong >= EEPROM_SIZE_BYTES_MAX) {
+    Log("Current EEPROM address is last/highest one!");
     currentEEPROMAddress = 0;
   }
   Log("New EEPROM address: ");
@@ -582,15 +595,30 @@ void increaseEEPROMAddress() {
 }
 
 void storeToEEPROM() {
-  Log("storeToEEPROM MyCounter: ");
-  Log(myCounter.total);
+  if (myCounter.total <= 0) {
+    Log("EEPROM write skipped due to invalid total.");
+    return;
+  }
+
+  Log("Storing MyCounter.total in EEPROM at address: ");
+  Log(currentEEPROMAddress);
+
+  // Ensure we have a valid address to write
+  if (currentEEPROMAddress < 0 || currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - (sizeofMyCounterLong + 1)) {
+    Log("Invalid EEPROM address detected, resetting to 0.");
+    currentEEPROMAddress = 0;
+  }
+
+  // Write MAGIC_BYTE to mark the start of a valid entry
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
 
+  // Convert total to a string representation
   char buffer[10];
   sprintf(buffer, "%10lu", myCounter.total);
   EEPROM.put(currentEEPROMAddress + 1, buffer);
 
   EEPROM.commit();
+  Log("EEPROM commit done.");
 }
 
 void loadFromEEPROM() {
