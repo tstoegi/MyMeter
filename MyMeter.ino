@@ -3,14 +3,18 @@
   MicroWakeupper battery shield with reed switch or proximity sensor
   (see README.md for setup/installation)
 
-  (c) 2022-2024 @tstoegi, Tobias Stöger , MIT license
+  (c) 2022-2025 @tstoegi, Tobias Stöger , MIT license
  ***************************************************************************/
 
 
 #include <Arduino.h>
 
+
+#include "config.h"       // located in the sketch folder - edit the file and define your settings
 #include <Credentials.h>  // should be (created) in folder "Arduino/libraries/Credentials/"
+
 // ... or uncomment here for inline
+
 /*** example of Credentials.h
 
 // your wifi
@@ -20,18 +24,18 @@
 // ota - over the air firmware updates - userid and password of your choise
 #define CR_OTA_MYMETER_CLIENT_PASSWORD "0123456789"
 
-// your mqtt server cert fingerprint -> use "" if you want to disable cert checking
-#define CR_MQTT_BROKER_CERT_FINGERPRINT "AA F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 00"
+// if MQTT_TLS enabled - your mqtt server cert fingerprint -> use "" if you want to disable cert checking
+#define CR_MQTT_BROKER_CERT_FINGERPRINT "CC F0 DE 66 E7 22 98 02 12 1D 59 08 4B 32 23 24 C9 F4 D1 DD"
 
 // your mqtt user and password as created on the server side
-#define CR_MQTT_BROKER_MYMETER_USER "mymeter"
-#define CR_MQTT_BROKER_MYMETER_PASSWORD "0123456789"
+#define CR_MQTT_BROKER_MYMETER_USER "user"
+#define CR_MQTT_BROKER_MYMETER_PASSWORD "password"
 
-*/
+***/
 // <<< elpmaxe
 
 
-#define versionString "0.7.20240312.2"
+#define versionString "0.8.20250526.1"
 
 #include <EEPROM.h>
 
@@ -40,7 +44,6 @@
 #include <PubSubClient.h>
 #include <ArduinoOTA.h>
 
-#include "config.h"  // located in the sketch folder - edit the file and define your settings
 
 const char *pubTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME;
 const char *subTopic = CO_MQTT_TOPIC_MAIN_FOLDER_PUB CO_MYMETER_NAME CO_MQTT_TOPIC_SUB_FOLDER_SUB;
@@ -82,12 +85,13 @@ char msg[50];
 const long one_turnaround = 10;  // For gas: one complete round 10 liter of gas (or 0.01 m3)
 
 struct MyCounter {
+  long total_read;
   long total;
 };
 MyCounter myCounter = { 0 };  // initial value can be set via mqtt retain message - see readme
 
 // we store the new value in EEPROM always at currentEEPROMAddress+1 to spread max write-life-cycles of the whole EEPROM - at the end we start from 0 again
-int sizeofMyCounterLong = 10;
+const int sizeofMyCounterLong = 10;
 
 int currentEEPROMAddress = 0;  // first address we try to read a valid value
 #define MAGIC_BYTE '#'         // start mark of our value in EEPROM "#1234567890" or "#  14567800" (max 10 digits)
@@ -95,7 +99,6 @@ int currentEEPROMAddress = 0;  // first address we try to read a valid value
 
 long rssi = 0;  // wifi signal strength
 
-bool turningOff = true;
 float voltageCalibration = 0.0;
 
 enum State {
@@ -110,6 +113,7 @@ enum State {
   state_turnedOff = 9
 } nextState;
 
+const int timeoutOTA = 120;  // Wait for 2 minutes
 bool otaEnabled = false;
 
 bool mqttAvailable = false;
@@ -131,20 +135,27 @@ void mqttPublish(const char *mainTopic, const char *subTopic, String msg) {
 void setup() {
   startTime = millis();
   Serial.begin(115200);
-  EEPROM.begin(EEPROM_SIZE_BYTES_MAX);  // mandator for esp8266 (because EEPROM is emulated for FLASH)
-  microWakeupper.begin();               // For correct initialisation
+
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, true);  // default off
 
   delay(100);
 
   Serial.println("\n*** MyMeter Monitoring ***");
   Serial.println(versionString);
 
+  EEPROM.begin(512);  // erforderlich für ESP8266
+
+  microWakeupper.begin();
+
   nextState = state_startup;
+
   nextStateDelaySeconds = 0;
 }
 
 void loop() {
   if (otaEnabled) {
+    digitalWrite(LED_BUILTIN, false);
     ArduinoOTA.handle();
   }
 
@@ -153,6 +164,7 @@ void loop() {
     prevMillis = millis();
     doNextState(nextState);
   }
+
   delay(100);
 }
 
@@ -169,8 +181,6 @@ void doNextState(State aNewState) {
     case state_startup:
       {
         Log("state_startup");
-        pinMode(LED_BUILTIN, OUTPUT);
-        digitalWrite(LED_BUILTIN, true);  // turn led off
 
         findLastUsedEEPROMAddress();
 
@@ -216,20 +226,33 @@ void doNextState(State aNewState) {
           yield();
         }
         setNextState(state_checkSensorData);
+        break;
       }
     case state_checkSensorData:
       {
         Log("state_checkSensorData");
 
         if (launchedByMicroWakeupperEvent) {
+          Log("launchedByMicroWakeupperEvent");
           Log(myCounter.total);
           myCounter.total = myCounter.total + one_turnaround;
           Log(one_turnaround);
           Log(myCounter.total);
+
+          if (myCounter.total != myCounter.total_read) {
+            increaseEEPROMAddress();
+            storeToEEPROM();
+          } else {
+            Log("!!! EEPROM write skipped due to unchanged total. !!!");
+          }
+          EEPROM.end();
+
           setNextState(state_sendMqtt);
         } else {
+          Log("No launchedByMicroWakeupperEvent");
           setNextState(state_turningOff);
         }
+        break;
       }
     case state_sendMqtt:
       {
@@ -243,37 +266,33 @@ void doNextState(State aNewState) {
           mqttPublish(pubTopic, "localIP", WiFi.localIP().toString());
 #endif
         }
-        setNextState(state_turningOff);
+        if (otaEnabled) {
+          setNextState(state_idle);
+        } else {
+          setNextState(state_turningOff);
+        }
         break;
       }
-    case state_idle:
+    case state_idle:  // used for OTA updates - microWakeupper is disabled during idle
       {
-        Log("state_idle (until next manual restart or external reset)");  // can be used for OTA updates
+        Log("state_idle (until next manual restart or timeout)");
         digitalWrite(LED_BUILTIN, false);
         delay(10);
         digitalWrite(LED_BUILTIN, true);
         delay(1000);
 
         static unsigned long prevMillis = millis();
-        if (millis() - prevMillis >= 60 * 1000) {
+        if (millis() - prevMillis >= timeoutOTA * 1000) {
           Log("OTA timed out!");
-          turningOff = true;
           setNextState(state_turningOff);
         }
         break;
       }
     case state_turningOff:
       {
-        if (!turningOff) {
-          setNextState(state_idle);
-          break;
-        }
         Log("state_turningOff");
 
         digitalWrite(LED_BUILTIN, true);  // turn led off
-        increaseEEPROMAddress();
-        storeToEEPROM();
-        EEPROM.end();
 
         Log("Waiting for turning device off (only if jumper J1 on MicroWakeupperShield is cutted!)");
         microWakeupper.reenable();
@@ -296,7 +315,7 @@ void doNextState(State aNewState) {
       }
   }
 
-  if (nextState > state_setupMqtt && nextState < state_turningOff) {
+  if (otaEnabled == false && nextState > state_setupMqtt && nextState < state_turningOff) {
     if (!mqttClient.loop()) {  //needs to be called regularly
       mqttReconnect();
     }
@@ -327,7 +346,7 @@ bool setupWifi() {
 #endif
 
   // Wait for connection
-  int retries = 2;
+  int retries = 4;
   while (WiFi.status() != WL_CONNECTED && retries > 0) {
 #ifdef STATIC_WIFI
     Log("Trying WiFi channel id: ");
@@ -370,7 +389,7 @@ bool setupWifi() {
   return true;
 }
 
-void setupOTA() {
+bool setupOTA() {
   String localIPWithoutDots = WiFi.localIP().toString();
   localIPWithoutDots.replace(".", "_");
   String ota_client_id = CO_MYMETER_NAME + localIPWithoutDots;
@@ -407,6 +426,7 @@ void setupOTA() {
 
   ArduinoOTA.begin();
   Log("OTA ready");
+  return true;
 }
 
 void setupMqtt() {
@@ -506,9 +526,7 @@ void mqttCallback(char *topic, byte *payload, unsigned int length) {
     if (str_payload.startsWith("true")
         || str_payload.startsWith("yes")) {
       Log("Disabling temporarly turningOff/deepSleep");
-      turningOff = false;
-      setupOTA();
-      otaEnabled = true;
+      otaEnabled = setupOTA();
       mqttPublish(subTopic, subTopicKey.c_str(), "");  // delete the retained mqtt message
     }
     return;
@@ -561,11 +579,7 @@ void findLastUsedEEPROMAddress() {
     // read a byte from the current address of the EEPROM
 #ifdef DEBUG
     char value = EEPROM[currentEEPROMAddress];
-    Log(currentEEPROMAddress);
-
-    Log("\t");
-    Log(value);
-    Log();
+    printf("EEPROM[%d] = '%c' (0x%02X)\n", currentEEPROMAddress, value, (unsigned char)value);
 #endif
     // read until we find something different as MAGIC_BYTE
     // e.g. ########47110815#####...
@@ -578,10 +592,10 @@ void findLastUsedEEPROMAddress() {
 
   if (currentEEPROMAddress < 0 || currentEEPROMAddress >= EEPROM_SIZE_BYTES_MAX) {  // empty/new EEPROM
     currentEEPROMAddress = -1;                                                      // will be set to 0 in increaseEEPROMAddress
+    Log("Current EEPROM nothing found (we set to -1)");
   }
 
-  Log("Current EEPROM address (-1 -> nothing found): ");
-  Log(currentEEPROMAddress);
+  Logf("Current EEPROM address %d\n: ", currentEEPROMAddress);
 }
 
 void increaseEEPROMAddress() {
@@ -599,9 +613,8 @@ void storeToEEPROM() {
     Log("EEPROM write skipped due to invalid total.");
     return;
   }
-
-  Log("Storing MyCounter.total in EEPROM at address: ");
-  Log(currentEEPROMAddress);
+  Logf("myCounter.total: %ld\n", myCounter.total);
+  Logf("Storing myCounter.total in EEPROM at address: %d\n", currentEEPROMAddress);
 
   // Ensure we have a valid address to write
   if (currentEEPROMAddress < 0 || currentEEPROMAddress > EEPROM_SIZE_BYTES_MAX - (sizeofMyCounterLong + 1)) {
@@ -613,9 +626,11 @@ void storeToEEPROM() {
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
 
   // Convert total to a string representation
-  char buffer[10];
-  sprintf(buffer, "%10lu", myCounter.total);
-  EEPROM.put(currentEEPROMAddress + 1, buffer);
+  char buffer[11];  // 10 digits + '\0'
+  snprintf(buffer, sizeof(buffer), "%010lu", myCounter.total);
+  for (int i = 0; i < 10; i++) {
+    EEPROM.write(currentEEPROMAddress + 1 + i, buffer[i]);
+  }
 
   EEPROM.commit();
   Log("EEPROM commit done.");
@@ -632,13 +647,15 @@ void loadFromEEPROM() {
   } else {
     char buffer[10];
     EEPROM.get(currentEEPROMAddress + 1, buffer);
-    myCounter.total = String(buffer).toInt();  // returns long
+    myCounter.total_read = String(buffer).toInt();  // returns long
     Log("loadFromEEPROM MyCounter: ");
-    Log(myCounter.total);
+    Log(myCounter.total_read);
   }
 
-  if (myCounter.total < 0 || isnan(myCounter.total)) {
+  if (myCounter.total_read < 0 || isnan(myCounter.total_read)) {
     Log("!!! Resetting myCounter.total to 0");
     myCounter.total = 0;
+  } else {
+    myCounter.total = myCounter.total_read;
   }
 }
