@@ -35,7 +35,7 @@
 // <<< elpmaxe
 
 
-#define versionString "0.8.20250526.1"
+#define versionString "0.9.20250527.1"
 
 #include <EEPROM.h>
 
@@ -250,7 +250,11 @@ void doNextState(State aNewState) {
           setNextState(state_sendMqtt);
         } else {
           Log("No launchedByMicroWakeupperEvent");
-          setNextState(state_turningOff);
+          if (otaEnabled) {
+            setNextState(state_idle);
+          } else {
+            setNextState(state_turningOff);
+          }
         }
         break;
       }
@@ -284,7 +288,7 @@ void doNextState(State aNewState) {
       {
         Log("state_idle (until next manual restart or timeout)");
         digitalWrite(LED_BUILTIN, false);
-        delay(10);
+        delay(100);
         digitalWrite(LED_BUILTIN, true);
         delay(1000);
 
