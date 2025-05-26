@@ -258,7 +258,14 @@ void doNextState(State aNewState) {
       {
         Log("state_sendMqtt");
         if (mqttAvailable) {
-          mqttPublish(pubTopic, "total", String(myCounter.total / 1000.0f));
+          // float to string
+          long total = myCounter.total;
+          long ganz = total / 1000;
+          long dezimal = (total % 1000) / 10;  // only 2 decimal places
+          char buf[16];
+          snprintf(buf, sizeof(buf), "%ld.%02ld", ganz, dezimal);
+          mqttPublish(pubTopic, "total", String(buf));
+
           mqttPublish(pubTopic, "wifi_rssi", String(rssi));
           mqttPublish(pubTopic, "batteryVoltage", String(microWakeupper.readVBatt() + voltageCalibration));
 #ifdef DEBUG
@@ -621,6 +628,13 @@ void storeToEEPROM() {
     Log("Invalid EEPROM address detected, resetting to 0.");
     currentEEPROMAddress = 0;
   }
+
+  // for testing only
+  // currentEEPROMAddress = 490;
+
+  // for (int i = 0; i < currentEEPROMAddress; i++) {
+  //   EEPROM.write(i, MAGIC_BYTE);
+  // }
 
   // Write MAGIC_BYTE to mark the start of a valid entry
   EEPROM.put(currentEEPROMAddress, MAGIC_BYTE);
