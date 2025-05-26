@@ -77,29 +77,46 @@ if [[ -z "$IP" || -z "$BINFILE" ]]; then
 fi
 
 # Build OTA command
-ESPOTA_PATH=$(find "$HOME/Library/Arduino15/packages/esp8266/hardware/esp8266" -name espota.py | sort -V | tail -n1)
+# Try local version first
+if [[ -f "./espota.py" ]]; then
+  ESPOTA_PATH="./espota.py"
+else
+  # Fallback: find latest espota.py in Arduino core folder
+  ESPOTA_PATH=$(find "$HOME/Library/Arduino15/packages/esp8266/hardware/esp8266" -name espota.py | sort -V | tail -n1)
+fi
 
+# Validate result
 if [[ ! -f "$ESPOTA_PATH" ]]; then
-  echo "espota.py not found. Please install the ESP8266 core via Arduino IDE or arduino-cli."
+  echo "espota.py not found in current directory or Arduino core installation."
   exit 1
 fi
+
+echo "Using espota.py at: $ESPOTA_PATH"
 
 # Wait for device to become reachable via ping
 echo "Waiting for $IP to respond to ping..."
 while ! ping -c 1 -W 1 "$IP" >/dev/null 2>&1; do
   sleep 1
 done
-echo "$IP is reachable. Starting OTA upload..."
-sleep 2
 
-CMD="python3 \"$ESPOTA_PATH\" -i \"$IP\" -p 8266"
+echo "$IP is reachable. Waiting briefly before OTA..."
+sleep 2  # still useful, avoids premature start
 
-if [[ -n "$AUTH" ]]; then
-  CMD="$CMD --auth=\"$AUTH\""
-fi
+MAX_RETRIES=10
+RETRY_DELAY=1
 
-CMD="$CMD -f \"$BINFILE\""
+echo "Trying OTA upload to $IP (up to $MAX_RETRIES attempts)..."
 
-# Execute
-eval $CMD
+for ((i=1; i<=MAX_RETRIES; i++)); do
+  echo "Attempt $i..."
+  python3 "$ESPOTA_PATH" -i "$IP" -p 8266 --auth="$AUTH" -f "$BINFILE" && {
+    echo "OTA upload successful on attempt $i."
+    exit 0
+  }
+  echo "OTA upload failed. Retrying in $RETRY_DELAY seconds..."
+  sleep $RETRY_DELAY
+done
+
+echo "OTA upload failed after $MAX_RETRIES attempts."
+exit 1
 
