@@ -1,9 +1,10 @@
-#define CO_MYMETER_NAME "mymeter"  // unique name of your device, e.g. gasmeter (used for mqtt client id and OTA network name)
+// Device name - used for WiFi AP name, MQTT client ID, OTA hostname, and MQTT topic
+// Examples: "gasmeter", "stromzaehler", "wasserzaehler"
+#define CO_MYMETER_NAME "MyMeter"
 
-#define CO_MQTT_BROKER_IP "192.168.?.?"          // ip of your mqtt broker/server
-#define CO_MQTT_TOPIC_MAIN_FOLDER_PUB "home/"     // mqtt main folder for e.g. home/mymeter
-#define CO_MQTT_BROKER_PORT 1883                  // 8883 via SSL/TLS, 1883 plain
-#define CO_MQTT_TOPIC_SUB_FOLDER_SUB "/settings"  // mqtt sub folder for home/mymeter/settings/config, e.g. waitForOTA, total or voltageCalibration
+// NOTE: MQTT broker settings are now configured via the web portal.
+// On first boot (or 3x reset), connect to the "<name>-Setup" WiFi AP
+// and configure your MQTT broker, port, user, password, and topic.
 
 // #define STATIC_IP  // uncomment this line, if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
@@ -20,7 +21,7 @@ int channel = 1;                                        // try to find out your 
 #endif
 
 // uncomment for enabling serial debug messages (and much slower processing)
-#define DEBUG
+#define DEBUG  // Enabled for debugging
 
 // uncomment for enabling mqtt tls support
 //#define MQTT_TLS

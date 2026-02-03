@@ -31,6 +31,8 @@ This is an Arduino project. Use Arduino IDE or Arduino CLI.
 ```
 
 **Serial Debug:**
+
+Use in separate terminal (not in Claude Code):
 ```bash
 picocom -b 115200 /dev/cu.usbserial-132410
 # Exit: Ctrl+A, Ctrl+X
@@ -69,9 +71,58 @@ In `config.h`:
 - `STATIC_IP` - Use static IP for faster WiFi connection
 - `STATIC_WIFI` - Use static BSSID/channel for faster connection
 
+## Version and Build Number
+
+**IMPORTANT:** Before each compile, increment `BUILD_NUMBER` in MyMeter.ino:
+```cpp
+#define VERSION_YEAR 2026
+#define VERSION_MONTH 2
+#define BUILD_NUMBER 3  // <-- INCREMENT THIS ON EACH COMPILE
+```
+
+The version string is automatically combined: `YEAR.MONTH.BUILD` (e.g., `2026.2.3`)
+
 ## Triggering Config Portal
 
 Reset the device 6 times within 10 seconds to force the config portal to open (like Tasmota). This is useful for:
 - Changing WiFi networks
 - Updating MQTT settings
 - Enabling OTA mode (auto-enabled after config portal save)
+
+## Performance Optimization TODO
+
+**Current Issues (as of v2026.2.17):**
+- IRAM usage: 93% (61100/65536 bytes) - **CRITICAL!** Too close to limit
+- RAM usage: 42% (34384/80192 bytes) - Acceptable
+- Flash usage: 37% (395808/1048576 bytes) - Good
+
+**Priority Tasks:**
+1. **IRAM Optimization (CRITICAL):**
+   - Move non-critical functions from IRAM to Flash
+   - Replace String operations with char arrays to reduce IRAM
+   - Consider loading WiFiManager dynamically only when needed
+   - Profile which functions consume most IRAM
+   - WiFiManager is known to be IRAM-heavy
+
+2. **WiFi Connection Speed:**
+   - Enable STATIC_IP for production builds (faster by ~2-3 seconds)
+   - Enable STATIC_WIFI (BSSID/channel) for even faster connection
+   - Reduce WiFi connection timeout values
+
+3. **Code Optimization:**
+   - Eliminate String concatenation (causes heap fragmentation)
+   - Use snprintf() instead of String operations
+   - Pre-allocate buffers where possible
+   - Optimize JSON document sizes
+
+4. **Timing Analysis:**
+   - Measure boot-to-sleep cycle time
+   - Profile MQTT connection time
+   - Identify bottlenecks in state machine
+   - Add timing measurements (only in DEBUG mode)
+
+**Target Goals:**
+- IRAM usage < 85% (safety margin for stability)
+- Boot-to-sleep cycle < 5 seconds (for battery life)
+- WiFi connection < 2 seconds
+- MQTT connection < 1 second

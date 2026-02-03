@@ -3,7 +3,7 @@
   MicroWakeupper battery shield with reed switch or proximity sensor
   (see README.md for setup/installation)
 
-  (c) 2022-2025 @tstoegi, Tobias Stöger , MIT license
+  (c) 2022 @tstoegi, Tobias Stöger , MIT license
  ***************************************************************************/
 
 
@@ -13,7 +13,14 @@
 #include "credentials.h"  // copy credentials.h.example to credentials.h and fill in your values
 
 
-#define versionString "2.0.20260130.1"
+#define VERSION_YEAR 2026
+#define VERSION_MONTH 2
+#define BUILD_NUMBER 29
+
+// Combine version: YEAR.MONTH.BUILD (e.g., 2026.2.3)
+#define STRINGIFY(x) #x
+#define TOSTRING(x) STRINGIFY(x)
+#define versionString TOSTRING(VERSION_YEAR) "." TOSTRING(VERSION_MONTH) "." TOSTRING(BUILD_NUMBER)
 
 #include <LittleFS.h>
 #include <ArduinoJson.h>
@@ -27,6 +34,8 @@
 
 // Configuration (loaded from LittleFS)
 struct Config {
+  // Device
+  char deviceName[32] = "";  // Device name (e.g., "MyMeter", "Gasmeter")
   // WiFi
   char wifiSsid[33] = "";
   char wifiPassword[65] = "";
@@ -37,6 +46,8 @@ struct Config {
   char password[64] = "";
   char topic[64] = "";  // Full MQTT topic path, set via portal (e.g., haus/gasmeter)
   bool otaOnBoot = false;
+  // OTA
+  char otaPassword[65] = "";  // Empty by default - configure via portal
 };
 Config config;
 
@@ -122,23 +133,19 @@ int nextStateDelaySeconds = 0;
 
 unsigned long startTime;
 
-// WiFiManager custom parameters
-WiFiManagerParameter* customMqttBroker;
-WiFiManagerParameter* customMqttPort;
-WiFiManagerParameter* customMqttUser;
-WiFiManagerParameter* customMqttPassword;
-WiFiManagerParameter* customMqttTopic;
-WiFiManagerParameter* customOtaCheckbox;
-WiFiManagerParameter* customSavedWifiInfo;
-WiFiManagerParameter* customFactoryReset;
+// No more custom parameters - we use custom HTTP handlers now
 
 bool shouldSaveConfig = false;
 bool factoryResetRequested = false;
 bool otaOnBootRequested = false;
 
-// Callback for WiFiManager when config is saved
+// Global WiFiManager pointer for custom handlers
+WiFiManager* globalWifiManager = nullptr;
+
+// Callback for WiFiManager when WiFi config is saved
+// Note: MQTT, OTA, and Device settings are now handled by custom pages
 void saveConfigCallback() {
-  Log("Config should be saved");
+  Log("WiFi config callback triggered");
   shouldSaveConfig = true;
 }
 
@@ -166,6 +173,8 @@ bool loadConfig() {
     return false;
   }
 
+  // Device
+  strlcpy(config.deviceName, doc["device_name"] | CO_MYMETER_NAME, sizeof(config.deviceName));
   // WiFi
   strlcpy(config.wifiSsid, doc["wifi_ssid"] | "", sizeof(config.wifiSsid));
   strlcpy(config.wifiPassword, doc["wifi_password"] | "", sizeof(config.wifiPassword));
@@ -176,6 +185,13 @@ bool loadConfig() {
   strlcpy(config.password, doc["mqtt_password"] | "", sizeof(config.password));
   strlcpy(config.topic, doc["mqtt_topic"] | "haus/mymeter", sizeof(config.topic));
   config.otaOnBoot = doc["ota_on_boot"] | false;
+  // OTA
+  strlcpy(config.otaPassword, doc["ota_password"] | "", sizeof(config.otaPassword));
+
+  // Set default device name if empty
+  if (strlen(config.deviceName) == 0) {
+    strlcpy(config.deviceName, CO_MYMETER_NAME, sizeof(config.deviceName));
+  }
 
   Log("Config loaded successfully");
   Log(config.broker);
@@ -187,6 +203,8 @@ bool saveConfig() {
   Log("Saving config to LittleFS");
 
   JsonDocument doc;
+  // Device
+  doc["device_name"] = config.deviceName;
   // WiFi
   doc["wifi_ssid"] = config.wifiSsid;
   doc["wifi_password"] = config.wifiPassword;
@@ -197,6 +215,8 @@ bool saveConfig() {
   doc["mqtt_password"] = config.password;
   doc["mqtt_topic"] = config.topic;
   doc["ota_on_boot"] = config.otaOnBoot;
+  // OTA
+  doc["ota_password"] = config.otaPassword;
 
   File configFile = LittleFS.open("/config.json", "w");
   if (!configFile) {
@@ -347,7 +367,7 @@ void setup() {
   if (loadPortalFlag()) {
     Log("Config portal flag found from previous boot");
     startConfigPortal = true;
-    clearPortalFlag();
+    clearPortalFlag();  // Clear immediately - if user resets, normal operation resumes
   }
 
   microWakeupper.begin();
@@ -363,7 +383,7 @@ void setup() {
   if (resetCount >= RESET_PATTERN_THRESHOLD) {
     Log("Multi-reset config portal triggered!");
     startConfigPortal = true;
-    setPortalFlag();  // Save flag so it survives additional resets
+    // No setPortalFlag() - portal opens only once, reset exits to normal mode
     clearResetCount();
   }
 
@@ -419,10 +439,12 @@ void doNextState(State aNewState) {
         myCounter.total_read = loadCounter();
         myCounter.total = myCounter.total_read;
 
-        if (microWakeupper.resetedBySwitch() && microWakeupper.isActive()) {
+        if (microWakeupper.resetedBySwitch()) {
           Log("Launched by a MicroWakeupperEvent");
           launchedByMicroWakeupperEvent = true;
           microWakeupper.disable();  // Preventing new triggering/resets
+          // Note: Don't clear reset count here - it's cleared in state_turningOff
+          // This allows multi-reset detection to work even when connected via serial
         }
 
         setNextState(state_setupWifi);
@@ -489,15 +511,15 @@ void doNextState(State aNewState) {
           } else {
             Log("!!! Counter save skipped due to unchanged total. !!!");
           }
-
-          setNextState(state_sendMqtt);
         } else {
           Log("No launchedByMicroWakeupperEvent");
-          if (otaEnabled) {
-            setNextState(state_idle);
-          } else {
-            setNextState(state_turningOff);
-          }
+        }
+
+        // Always go through state_sendMqtt to publish version and status
+        if (otaEnabled && !launchedByMicroWakeupperEvent) {
+          setNextState(state_idle);
+        } else {
+          setNextState(state_sendMqtt);
         }
         break;
       }
@@ -530,10 +552,15 @@ void doNextState(State aNewState) {
     case state_idle:  // used for OTA updates - microWakeupper is disabled during idle
       {
         Log("state_idle (until next manual restart or timeout)");
-        digitalWrite(LED_BUILTIN, false);
+        // Double-blink pattern for OTA mode (distinctive from config portal)
+        digitalWrite(LED_BUILTIN, false);  // blink 1
         delay(100);
         digitalWrite(LED_BUILTIN, true);
-        delay(1000);
+        delay(150);
+        digitalWrite(LED_BUILTIN, false);  // blink 2
+        delay(100);
+        digitalWrite(LED_BUILTIN, true);
+        delay(1000);  // pause
 
         static unsigned long prevMillis = millis();
         if (millis() - prevMillis >= timeoutOTA * 1000) {
@@ -547,6 +574,9 @@ void doNextState(State aNewState) {
         Log("state_turningOff");
 
         digitalWrite(LED_BUILTIN, true);  // turn led off
+
+        // Clear reset counter before sleep - prevents accumulation from normal wake cycles
+        clearResetCount();
 
         Log("Waiting for turning device off (only if jumper J1 on MicroWakeupperShield is cutted!)");
         microWakeupper.reenable();
@@ -574,6 +604,203 @@ void doNextState(State aNewState) {
       mqttReconnect();
     }
   }
+}
+
+// Helper function to generate HTML header
+String getHTMLHeader(const char* title) {
+  String html = "<!DOCTYPE html><html><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'>";
+  html += "<title>" + String(title) + "</title>";
+  html += "<style>body{font-family:sans-serif;margin:20px;background:#f0f0f0}";
+  html += ".container{max-width:400px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}";
+  html += "h2{color:#1fa3ec;margin-top:0}input,select{width:100%;padding:8px;margin:8px 0;box-sizing:border-box;border:1px solid #ddd;border-radius:4px}";
+  html += "button,a.button{background:#1fa3ec;color:white;padding:12px;border:none;border-radius:4px;cursor:pointer;width:100%;margin:8px 0;text-decoration:none;display:block;box-sizing:border-box;text-align:center;font-size:16px;font-family:sans-serif;font-weight:normal}";
+  html += "button:hover,a.button:hover{background:#1581bd}.back{background:#888}.back:hover{background:#666}";
+  html += "label{display:block;margin:10px 0 5px 0;font-weight:bold}</style></head><body><div class='container'>";
+  return html;
+}
+
+String getHTMLFooter() {
+  return "</div></body></html>";
+}
+
+// Custom handler for MQTT settings page
+void handleMqttPage() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  String html = getHTMLHeader("MQTT Settings");
+  html += "<h2>📡 MQTT Configuration</h2>";
+  html += "<form method='POST' action='/mqtt_save'>";
+  html += "<label>Broker IP</label><input name='mqtt_broker' value='" + String(config.broker) + "'>";
+  html += "<label>Port</label><input name='mqtt_port' value='" + String(config.port) + "'>";
+  html += "<label>User</label><input name='mqtt_user' value='" + String(config.user) + "'>";
+  html += "<label>Password</label><input type='password' name='mqtt_password' value='" + String(config.password) + "'>";
+  html += "<label>Topic</label><input name='mqtt_topic' value='" + String(config.topic) + "' placeholder='haus/mymeter'>";
+  html += "<button type='submit'>Save</button>";
+  html += "</form>";
+  html += "<a href='/' class='button back'>Back to Menu</a>";
+  html += getHTMLFooter();
+
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+// Custom handler for Update/OTA settings page
+void handleUpdatePage() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  String html = getHTMLHeader("Update Settings");
+  html += "<h2>🔄 Update (OTA)</h2>";
+  html += "<form method='POST' action='/update_save'>";
+  html += "<label>OTA Password <small>(leave empty to disable)</small></label>";
+  html += "<input type='password' name='ota_password' value='" + String(config.otaPassword) + "'>";
+  html += "<label><input type='checkbox' name='ota_boot' value='yes'> Enable OTA after reboot</label>";
+  html += "<button type='submit'>Save</button>";
+  html += "</form>";
+  html += "<a href='/' class='button back'>Back to Menu</a>";
+  html += getHTMLFooter();
+
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+// Custom handler for Device settings page
+void handleSettingsPage() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  String html = getHTMLHeader("Device Settings");
+  html += "<h2>⚙️ Device Settings</h2>";
+  html += "<form method='POST' action='/settings_save'>";
+  html += "<label>Device Name</label><input name='device_name' value='" + String(strlen(config.deviceName) > 0 ? config.deviceName : CO_MYMETER_NAME) + "'>";
+
+  char counterTotalStr[16];
+  float totalFloat = myCounter.total / 1000.0f;
+  snprintf(counterTotalStr, sizeof(counterTotalStr), "%.2f", totalFloat);
+  html += "<label>Counter Total (m³ or kWh)</label><input name='counter_total' value='" + String(counterTotalStr) + "'>";
+
+  html += "<hr><label style='color:red'><input type='checkbox' name='factory_reset' value='yes'> Factory Reset (delete all settings)</label>";
+  html += "<button type='submit'>Save</button>";
+  html += "</form>";
+  html += "<a href='/' class='button back'>Back to Menu</a>";
+  html += getHTMLFooter();
+
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+// Save handlers
+void handleMqttSave() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  if (globalWifiManager->server->hasArg("mqtt_broker")) {
+    strlcpy(config.broker, globalWifiManager->server->arg("mqtt_broker").c_str(), sizeof(config.broker));
+    config.port = globalWifiManager->server->arg("mqtt_port").toInt();
+    if (config.port == 0) config.port = 1883;
+    strlcpy(config.user, globalWifiManager->server->arg("mqtt_user").c_str(), sizeof(config.user));
+    strlcpy(config.password, globalWifiManager->server->arg("mqtt_password").c_str(), sizeof(config.password));
+    strlcpy(config.topic, globalWifiManager->server->arg("mqtt_topic").c_str(), sizeof(config.topic));
+    saveConfig();
+  }
+
+  String html = getHTMLHeader("Saved");
+  html += "<h2>✓ Saved!</h2><p>MQTT settings saved successfully.</p>";
+  html += "<a href='/mqtt' class='button'>Back to MQTT Settings</a>";
+  html += "<a href='/' class='button back'>Main Menu</a>";
+  html += getHTMLFooter();
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+void handleUpdateSave() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  if (globalWifiManager->server->hasArg("ota_password")) {
+    String otaPwd = globalWifiManager->server->arg("ota_password");
+    if (otaPwd.length() > 0) {
+      strlcpy(config.otaPassword, otaPwd.c_str(), sizeof(config.otaPassword));
+    } else {
+      config.otaPassword[0] = '\0';
+    }
+  }
+
+  config.otaOnBoot = globalWifiManager->server->hasArg("ota_boot");
+  saveConfig();
+
+  String html = getHTMLHeader("Saved");
+  html += "<h2>✓ Saved!</h2><p>Update settings saved successfully.</p>";
+  html += "<a href='/update' class='button'>Back to Update Settings</a>";
+  html += "<a href='/' class='button back'>Main Menu</a>";
+  html += getHTMLFooter();
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+void handleSettingsSave() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  // Device name
+  if (globalWifiManager->server->hasArg("device_name")) {
+    String devName = globalWifiManager->server->arg("device_name");
+    if (devName.length() > 0) {
+      strlcpy(config.deviceName, devName.c_str(), sizeof(config.deviceName));
+    }
+  }
+
+  // Counter total
+  if (globalWifiManager->server->hasArg("counter_total")) {
+    float newTotal = globalWifiManager->server->arg("counter_total").toFloat();
+    if (newTotal >= 0 && newTotal < 1e9) {
+      myCounter.total = newTotal * 1000.0f;
+      saveCounter(myCounter.total);
+    }
+  }
+
+  // Factory reset
+  if (globalWifiManager->server->hasArg("factory_reset")) {
+    LittleFS.format();
+    WiFi.disconnect(true);
+
+    String html = getHTMLHeader("Factory Reset");
+    html += "<h2>🔄 Factory Reset</h2><p>All settings deleted. Device will restart...</p>";
+    html += getHTMLFooter();
+    globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+    delay(2000);
+    ESP.restart();
+    return;
+  }
+
+  saveConfig();
+
+  String html = getHTMLHeader("Saved");
+  html += "<h2>✓ Saved!</h2><p>Device settings saved successfully.</p>";
+  html += "<a href='/settings' class='button'>Back to Device Settings</a>";
+  html += "<a href='/' class='button back'>Main Menu</a>";
+  html += getHTMLFooter();
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
+}
+
+// Custom handler for main menu (replaces WiFiManager's default root page)
+void handleMainMenu() {
+  if (!globalWifiManager || !globalWifiManager->server) return;
+
+  const char* devName = strlen(config.deviceName) > 0 ? config.deviceName : CO_MYMETER_NAME;
+
+  String html = "<!DOCTYPE html><html><head>"
+    "<meta charset='UTF-8'>"
+    "<meta name='viewport' content='width=device-width,initial-scale=1'>"
+    "<title>" + String(devName) + "</title>"
+    "<style>"
+    "body{font-family:sans-serif;background:#f0f0f0;margin:0;padding:20px}"
+    ".container{max-width:400px;margin:0 auto;background:white;padding:20px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1)}"
+    "h1{color:#1fa3ec;text-align:center;margin-top:0}"
+    "a{display:block;padding:16px;margin:10px 0;background:#1fa3ec;color:white;text-decoration:none;border-radius:6px;font-size:16px;text-align:center}"
+    "a:hover{background:#1581bd}"
+    ".exit{background:#888}.exit:hover{background:#666}"
+    "</style></head><body><div class='container'>"
+    "<h1>" + String(devName) + "</h1>"
+    "<a href='/wifi'>📶 WiFi</a>"
+    "<a href='/mqtt'>📡 MQTT</a>"
+    "<a href='/settings'>⚙️  Settings</a>"
+    "<a href='/update'>🔄 Update</a>"
+    "<a href='/exit' class='exit'>❌ Exit</a>"
+    "<p style='text-align:center;color:#999;font-size:12px;margin-top:20px'>Firmware: " + String(versionString) + "</p>"
+    "</div></body></html>";
+
+  globalWifiManager->server->send(200, "text/html; charset=UTF-8", html);
 }
 
 bool setupWifi() {
@@ -613,63 +840,44 @@ bool setupWifi() {
   // If not connected, use WiFiManager
   if (!connected) {
     WiFiManager wifiManager;
-    wifiManager.setSaveConfigCallback(saveConfigCallback);
+    globalWifiManager = &wifiManager;  // Store pointer for custom handlers
+
     wifiManager.setConfigPortalTimeout(300);
+    wifiManager.setTitle("MyMeter");
 
-    // Create custom parameters for MQTT configuration
-    char portStr[6];
-    snprintf(portStr, sizeof(portStr), "%d", config.port);
+    // Let WiFiManager handle only the wifi configuration page
+    // We'll override the root page with our custom menu
+    const char* menu[] = {"wifi"};
+    wifiManager.setMenu(menu, 1);
 
-    customMqttBroker = new WiFiManagerParameter("mqtt_broker", "MQTT Broker IP", config.broker, 63);
-    customMqttPort = new WiFiManagerParameter("mqtt_port", "MQTT Port", portStr, 5);
-    customMqttUser = new WiFiManagerParameter("mqtt_user", "MQTT User", config.user, 31);
+    // Hide "No AP set" message on WiFi config page
+    String customCSS = "<style>.msg{display:none !important;}</style>";
+    wifiManager.setCustomHeadElement(customCSS.c_str());
 
-    const char* pwCustomHtml = "type='password'";
-    customMqttPassword = new WiFiManagerParameter("mqtt_password", "MQTT Password", config.password, 63, pwCustomHtml);
+    // Set callback to register custom handlers after WiFiManager sets up the server
+    wifiManager.setWebServerCallback([]() {
+      if (globalWifiManager && globalWifiManager->server) {
+        Log("Registering custom HTTP handlers via callback");
+        // Custom main menu at root (override WiFiManager's root)
+        globalWifiManager->server->on("/", handleMainMenu);
+        // Custom configuration pages
+        globalWifiManager->server->on("/mqtt", handleMqttPage);
+        globalWifiManager->server->on("/mqtt_save", HTTP_POST, handleMqttSave);
+        globalWifiManager->server->on("/update", handleUpdatePage);
+        globalWifiManager->server->on("/update_save", HTTP_POST, handleUpdateSave);
+        globalWifiManager->server->on("/settings", handleSettingsPage);
+        globalWifiManager->server->on("/settings_save", HTTP_POST, handleSettingsSave);
+        Log("Custom handlers registered");
+      }
+    });
 
-    const char* showPwHtml =
-      "<label style='display:block;margin-top:5px'>"
-      "<input type='checkbox' onclick=\"var p=document.getElementById('mqtt_password');"
-      "p.type=this.checked?'text':'password';\"> Show Password</label>";
-    static WiFiManagerParameter showPwCheckbox(showPwHtml);
-
-    customMqttTopic = new WiFiManagerParameter("mqtt_topic", "MQTT Topic (e.g. haus/mymeter)", config.topic, 63);
-
-    // OTA checkbox with hidden field for WiFiManager to read
-    const char* otaCheckboxHtml =
-      "<br><label><input type='checkbox' id='ota_cb' onchange=\"document.getElementById('ota_boot').value=this.checked?'yes':'no'\"> "
-      "Enable OTA after reboot</label>";
-    customOtaCheckbox = new WiFiManagerParameter(otaCheckboxHtml);
-    static WiFiManagerParameter otaBootValue("ota_boot", "", "no", 4, "type='hidden'");
-
-    // Show saved WiFi info
-    String savedWifiHtml = "<p style='color:#666;margin:10px 0'><b>Saved WiFi:</b> ";
-    savedWifiHtml += strlen(config.wifiSsid) > 0 ? config.wifiSsid : "(none)";
-    savedWifiHtml += "</p>";
-    customSavedWifiInfo = new WiFiManagerParameter(savedWifiHtml.c_str());
-
-    // Factory reset checkbox with hidden field for WiFiManager to read
-    const char* factoryResetHtml =
-      "<br><hr><label style='color:red'><input type='checkbox' id='fr_cb' onchange=\"document.getElementById('factory_reset').value=this.checked?'yes':'no'\"> "
-      "Factory Reset (delete all settings)</label>";
-    customFactoryReset = new WiFiManagerParameter(factoryResetHtml);
-
-    // Hidden field that WiFiManager can read
-    static WiFiManagerParameter factoryResetValue("factory_reset", "", "no", 4, "type='hidden'");
-
-    wifiManager.addParameter(customSavedWifiInfo);
-    wifiManager.addParameter(customMqttBroker);
-    wifiManager.addParameter(customMqttPort);
-    wifiManager.addParameter(customMqttUser);
-    wifiManager.addParameter(customMqttPassword);
-    wifiManager.addParameter(&showPwCheckbox);
-    wifiManager.addParameter(customMqttTopic);
-    wifiManager.addParameter(customOtaCheckbox);
-    wifiManager.addParameter(&otaBootValue);
-    wifiManager.addParameter(customFactoryReset);
-    wifiManager.addParameter(&factoryResetValue);
-
-    String apName = String(CO_MYMETER_NAME) + "-Setup";
+    // Create AP name with last 4 hex digits of MAC address for unique identification
+    uint8_t mac[6];
+    WiFi.macAddress(mac);
+    char macSuffix[5];
+    sprintf(macSuffix, "%02X%02X", mac[4], mac[5]);
+    const char* devName = strlen(config.deviceName) > 0 ? config.deviceName : CO_MYMETER_NAME;
+    String apName = String(devName) + "-" + macSuffix + "-Setup";
 
     // Start fast LED blinking during config portal
     ledTicker.attach(0.2, blinkLED);
@@ -686,65 +894,29 @@ bool setupWifi() {
     ledTicker.detach();
     digitalWrite(LED_BUILTIN, true);  // LED off
 
+    // Clear portal flag now that portal has finished
+    clearPortalFlag();
+
+    // If connected via portal, save WiFi credentials to our config.json
+    if (connected) {
+      String currentSsid = WiFi.SSID();
+      if (currentSsid.length() > 0 && strcmp(config.wifiSsid, currentSsid.c_str()) != 0) {
+        Log("Saving new WiFi credentials...");
+        Log(currentSsid);
+        strlcpy(config.wifiSsid, currentSsid.c_str(), sizeof(config.wifiSsid));
+        strlcpy(config.wifiPassword, WiFi.psk().c_str(), sizeof(config.wifiPassword));
+        saveConfig();
+        Log("WiFi credentials saved!");
+      }
+    }
+
     if (!connected) {
       Log("WiFi connection failed!");
-      delete customMqttBroker;
-      delete customMqttPort;
-      delete customMqttUser;
-      delete customMqttPassword;
-      delete customMqttTopic;
-      delete customOtaCheckbox;
-      delete customSavedWifiInfo;
-      delete customFactoryReset;
+      globalWifiManager = nullptr;
       return false;
     }
 
-    // Check for factory reset
-    if (strcmp(factoryResetValue.getValue(), "yes") == 0) {
-      Log("Factory reset requested!");
-      LittleFS.format();
-      WiFi.disconnect(true);  // Clear WiFi credentials
-      delay(1000);
-      ESP.restart();
-    }
-
-    // Save WiFi and MQTT config
-    if (shouldSaveConfig || connected) {
-      Log("Saving config...");
-
-      // Save WiFi credentials from connected network
-      strlcpy(config.wifiSsid, WiFi.SSID().c_str(), sizeof(config.wifiSsid));
-      strlcpy(config.wifiPassword, WiFi.psk().c_str(), sizeof(config.wifiPassword));
-
-      // Save MQTT parameters
-      strlcpy(config.broker, customMqttBroker->getValue(), sizeof(config.broker));
-      config.port = atoi(customMqttPort->getValue());
-      if (config.port == 0) config.port = 1883;
-      strlcpy(config.user, customMqttUser->getValue(), sizeof(config.user));
-      strlcpy(config.password, customMqttPassword->getValue(), sizeof(config.password));
-      strlcpy(config.topic, customMqttTopic->getValue(), sizeof(config.topic));
-
-      // Check OTA checkbox
-      if (strcmp(otaBootValue.getValue(), "yes") == 0) {
-        config.otaOnBoot = true;
-      }
-
-      saveConfig();
-      buildTopics();
-
-      Log("Config saved, restarting...");
-      delay(1000);
-      ESP.restart();
-    }
-
-    delete customMqttBroker;
-    delete customMqttPort;
-    delete customMqttUser;
-    delete customMqttPassword;
-    delete customMqttTopic;
-    delete customOtaCheckbox;
-    delete customSavedWifiInfo;
-    delete customFactoryReset;
+    globalWifiManager = nullptr;  // Clear pointer after portal closes
   }
 
   Log("");
@@ -761,13 +933,20 @@ bool setupWifi() {
 bool setupOTA() {
   String localIPWithoutDots = WiFi.localIP().toString();
   localIPWithoutDots.replace(".", "_");
-  String ota_client_id = String(CO_MYMETER_NAME) + localIPWithoutDots;
+  const char* devName = strlen(config.deviceName) > 0 ? config.deviceName : CO_MYMETER_NAME;
+  String ota_client_id = String(devName) + localIPWithoutDots;
   Log("OTA_CLIENT_ID: ");
   Log(ota_client_id);
 
   ArduinoOTA.setHostname(ota_client_id.c_str());
 
-  ArduinoOTA.setPassword(CR_OTA_MYMETER_CLIENT_PASSWORD);
+  // Use configured OTA password, disable auth if empty
+  if (strlen(config.otaPassword) > 0) {
+    ArduinoOTA.setPassword(config.otaPassword);
+    Log("OTA password authentication enabled");
+  } else {
+    Log("OTA authentication disabled (no password set)");
+  }
 
   ArduinoOTA.onStart([]() {
     Log("Start");
@@ -835,7 +1014,8 @@ bool mqttReconnect() {
     Log("Attempting MQTT connection...");
 
     // Create a random and unique client ID for mqtt
-    String clientId = String(CO_MYMETER_NAME) + WiFi.localIP().toString();
+    const char* devName = strlen(config.deviceName) > 0 ? config.deviceName : CO_MYMETER_NAME;
+    String clientId = String(devName) + WiFi.localIP().toString();
     Log("MQTT_CLIENT_ID: ");
     Log(clientId);
 
