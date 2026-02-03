@@ -15,7 +15,7 @@
 
 #define VERSION_YEAR 2026
 #define VERSION_MONTH 2
-#define BUILD_NUMBER 29
+#define BUILD_NUMBER 30
 
 // Combine version: YEAR.MONTH.BUILD (e.g., 2026.2.3)
 #define STRINGIFY(x) #x
@@ -149,12 +149,40 @@ void saveConfigCallback() {
   shouldSaveConfig = true;
 }
 
+// Create default configuration if defines are present
+bool createDefaultConfig() {
+#if defined(DEFAULT_WIFI_SSID) && defined(DEFAULT_MQTT_BROKER)
+  Log("Creating default config from credentials.h");
+
+  strlcpy(config.deviceName, CO_MYMETER_NAME, sizeof(config.deviceName));
+  strlcpy(config.wifiSsid, DEFAULT_WIFI_SSID, sizeof(config.wifiSsid));
+  strlcpy(config.wifiPassword, DEFAULT_WIFI_PASSWORD, sizeof(config.wifiPassword));
+  strlcpy(config.broker, DEFAULT_MQTT_BROKER, sizeof(config.broker));
+  config.port = DEFAULT_MQTT_PORT;
+  strlcpy(config.user, DEFAULT_MQTT_USER, sizeof(config.user));
+  strlcpy(config.password, DEFAULT_MQTT_PASSWORD, sizeof(config.password));
+  strlcpy(config.topic, DEFAULT_MQTT_TOPIC, sizeof(config.topic));
+  strlcpy(config.otaPassword, CR_OTA_MYMETER_CLIENT_PASSWORD, sizeof(config.otaPassword));
+  config.otaOnBoot = false;
+
+  // Save to LittleFS
+  return saveConfig();
+#else
+  return false;
+#endif
+}
+
 // Load configuration from LittleFS
 bool loadConfig() {
   Log("Loading config from LittleFS");
 
   if (!LittleFS.exists("/config.json")) {
     Log("Config file not found");
+    // Try to create default config
+    if (createDefaultConfig()) {
+      Log("Default config created successfully");
+      return true;
+    }
     return false;
   }
 

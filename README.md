@@ -50,10 +50,47 @@ Install these libraries in your Arduino IDE:
    - Optional: Configure `STATIC_IP` and `STATIC_WIFI` for faster connection
 
 2. **credentials.h** - Copy from `credentials.h.example`
+   - OTA password
    - Optional: Set MQTT TLS fingerprint
-   - Note: OTA password is now configured via web portal
+   - Optional: Pre-configure WiFi and MQTT defaults (see below)
 
-### First-Time Setup
+### Setup Methods
+
+MyMeter supports **two configuration approaches**:
+
+#### Option A: Runtime Configuration (Default - Recommended for most users)
+Use the web portal to configure WiFi and MQTT settings. This is the easiest method and allows changing settings without reflashing.
+
+See **"First-Time Setup"** section below.
+
+#### Option B: Compile-Time Pre-Configuration (Advanced)
+Pre-configure devices with WiFi and MQTT settings at compile time. Useful for:
+- Flashing multiple identical devices
+- Avoiding manual configuration steps
+- Corporate/controlled deployments
+
+**How to use:**
+1. Copy `credentials.h.example` to `credentials.h`
+2. Uncomment and fill in the `DEFAULT_*` defines:
+```cpp
+#define DEFAULT_WIFI_SSID "YourWiFiSSID"
+#define DEFAULT_WIFI_PASSWORD "YourWiFiPassword"
+#define DEFAULT_MQTT_BROKER "192.168.1.100"
+#define DEFAULT_MQTT_PORT 1883
+#define DEFAULT_MQTT_USER "mqtt_user"
+#define DEFAULT_MQTT_PASSWORD "mqtt_password"
+#define DEFAULT_MQTT_TOPIC "home/mymeter"
+```
+3. Compile and flash
+4. Device starts immediately with these settings (no config portal needed)
+
+**Note:** If `config.json` already exists in LittleFS, these defaults are ignored. To force new defaults, either:
+- Perform a factory reset via config portal (6x reset → Factory Reset button)
+- Erase flash before uploading: `esptool.py erase_flash`
+
+You can still open the config portal later (6x reset) to modify settings.
+
+### First-Time Setup (Runtime Configuration)
 1. Flash the firmware to your Wemos D1 Mini
 2. The device creates a WiFi access point named `MyMeter-XXXX-Setup` (XXXX = last 4 digits of MAC)
 3. Connect to this AP and navigate to `192.168.4.1`
