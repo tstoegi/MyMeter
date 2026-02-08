@@ -218,6 +218,40 @@ Edit `config.h` to toggle debug mode:
 #define MQTT_TLS       // Enable TLS for MQTT (requires fingerprint in credentials.h)
 ```
 
+#### Static IP Configuration
+To use static IP for faster WiFi connection (saves ~2-3 seconds on boot):
+
+1. Edit `config.h` and uncomment `#define STATIC_IP`
+2. Configure your IP address values:
+```cpp
+#define STATIC_IP_ADDR 192, 168, 1, 100    // Your desired IP address
+#define STATIC_GATEWAY 192, 168, 1, 1      // Your router's gateway
+#define STATIC_SUBNET 255, 255, 255, 0     // Subnet mask
+#define STATIC_DNS 192, 168, 1, 1          // DNS server (usually same as gateway)
+```
+
+**Note:** Use commas (not periods) to separate the IP address octets.
+
+#### Static WiFi Configuration
+To use static BSSID/channel for even faster WiFi connection:
+
+1. Enable debug mode and connect once to see your router's BSSID and channel in serial output
+2. Edit `config.h` and uncomment `#define STATIC_WIFI`
+3. Configure your router's BSSID and channel:
+```cpp
+byte bssid[] = { 0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF };  // Your router's MAC address
+int channel = 6;  // Your WiFi channel (1-13)
+```
+
+#### MQTT TLS Configuration
+To enable encrypted MQTT connection:
+
+1. Edit `config.h` and uncomment `#define MQTT_TLS`
+2. Edit `credentials.h` and set your broker's TLS fingerprint:
+```cpp
+#define CR_MQTT_TLS_FINGERPRINT "AA BB CC DD EE FF ..."
+```
+
 ---
 
 (c) 2022-2026 @tstoegi, Tobias Stöger, MIT License
