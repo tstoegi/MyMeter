@@ -15,7 +15,7 @@
 
 #define VERSION_YEAR 2026
 #define VERSION_MONTH 2
-#define BUILD_NUMBER 30
+#define BUILD_NUMBER 32
 
 // Combine version: YEAR.MONTH.BUILD (e.g., 2026.2.3)
 #define STRINGIFY(x) #x
@@ -155,13 +155,33 @@ bool createDefaultConfig() {
   Log("Creating default config from credentials.h");
 
   strlcpy(config.deviceName, CO_MYMETER_NAME, sizeof(config.deviceName));
+  Log("Device name: ");
+  Log(config.deviceName);
+
   strlcpy(config.wifiSsid, DEFAULT_WIFI_SSID, sizeof(config.wifiSsid));
+  Log("WiFi SSID: ");
+  Log(config.wifiSsid);
+
   strlcpy(config.wifiPassword, DEFAULT_WIFI_PASSWORD, sizeof(config.wifiPassword));
+
   strlcpy(config.broker, DEFAULT_MQTT_BROKER, sizeof(config.broker));
+  Log("MQTT Broker: ");
+  Log(config.broker);
+
   config.port = DEFAULT_MQTT_PORT;
+  Log("MQTT Port: ");
+  Log(String(config.port));
+
   strlcpy(config.user, DEFAULT_MQTT_USER, sizeof(config.user));
+  Log("MQTT User: ");
+  Log(config.user);
+
   strlcpy(config.password, DEFAULT_MQTT_PASSWORD, sizeof(config.password));
+
   strlcpy(config.topic, DEFAULT_MQTT_TOPIC, sizeof(config.topic));
+  Log("MQTT Topic: ");
+  Log(config.topic);
+
   strlcpy(config.otaPassword, CR_OTA_MYMETER_CLIENT_PASSWORD, sizeof(config.otaPassword));
   config.otaOnBoot = false;
 
@@ -838,7 +858,19 @@ bool setupWifi() {
   delay(100);
 
 #ifdef STATIC_IP
-  WiFi.config(ip, gateway, subnet, dns);
+  IPAddress staticIP(STATIC_IP_ADDR);
+  IPAddress staticGateway(STATIC_GATEWAY);
+  IPAddress staticSubnet(STATIC_SUBNET);
+  IPAddress staticDNS(STATIC_DNS);
+  Log("Configuring static IP:");
+  Log(staticIP.toString());
+  Log("Gateway: ");
+  Log(staticGateway.toString());
+  Log("Subnet: ");
+  Log(staticSubnet.toString());
+  Log("DNS: ");
+  Log(staticDNS.toString());
+  WiFi.config(staticIP, staticGateway, staticSubnet, staticDNS);
 #endif
 
   bool connected = false;

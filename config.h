@@ -8,10 +8,10 @@
 
 // #define STATIC_IP  // uncomment this line, if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
-IPAddress ip(192, 168, 4, 88);
-IPAddress gateway(192, 168, 4, 1);
-IPAddress subnet(255, 255, 255, 0);
-IPAddress dns(192, 168, 4, 1);
+#define STATIC_IP_ADDR 192, 168, 4, 88
+#define STATIC_GATEWAY 192, 168, 4, 1
+#define STATIC_SUBNET 255, 255, 255, 0
+#define STATIC_DNS 192, 168, 4, 1
 #endif
 
 // #define STATIC_WIFI  // uncomment this line, if you want to use a static WIFI (dedicated BSSID and Channel ID)
