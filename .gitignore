@@ -1,2 +1,6 @@
 **/.DS_Store
 /build
+credentials.h
+config_*.h
+!config.h
+.claude/
