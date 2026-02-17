@@ -8,7 +8,7 @@
 
 // #define STATIC_IP  // uncomment this line, if you want to use a static IP (for faster WiFi connection)
 #ifdef STATIC_IP
-#define STATIC_IP_ADDR 192, 168, 4, 88
+#define STATIC_IP_ADDR 192, 168, 4, 87  // device static IP (comma-separated octets)
 #define STATIC_GATEWAY 192, 168, 4, 1
 #define STATIC_SUBNET 255, 255, 255, 0
 #define STATIC_DNS 192, 168, 4, 1
@@ -21,7 +21,7 @@ int channel = 1;                                        // try to find out your 
 #endif
 
 // uncomment for enabling serial debug messages (and much slower processing)
-#define DEBUG  // Enabled for debugging
+// #define DEBUG  // uncomment for enabling serial debug messages (and much slower processing)
 
 // uncomment for enabling mqtt tls support
 //#define MQTT_TLS

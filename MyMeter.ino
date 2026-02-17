@@ -15,7 +15,7 @@
 
 #define VERSION_YEAR 2026
 #define VERSION_MONTH 2
-#define BUILD_NUMBER 32
+#define BUILD_NUMBER 41
 
 // Combine version: YEAR.MONTH.BUILD (e.g., 2026.2.3)
 #define STRINGIFY(x) #x
@@ -613,6 +613,8 @@ void doNextState(State aNewState) {
         static unsigned long prevMillis = millis();
         if (millis() - prevMillis >= timeoutOTA * 1000) {
           Log("OTA timed out!");
+          otaEnabled = false;  // Clear OTA flag to allow normal shutdown
+          Log("OTA flag cleared - device will now turn off normally");
           setNextState(state_turningOff);
         }
         break;
@@ -620,6 +622,13 @@ void doNextState(State aNewState) {
     case state_turningOff:
       {
         Log("state_turningOff");
+
+        // Safety check: Don't turn off if OTA is enabled
+        if (otaEnabled) {
+          Log("OTA enabled - staying in idle mode instead of turning off");
+          setNextState(state_idle);
+          break;
+        }
 
         digitalWrite(LED_BUILTIN, true);  // turn led off
 

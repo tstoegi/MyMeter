@@ -63,6 +63,14 @@ picocom -b 115200 /dev/cu.usbserial-132410
 - Publish: `<main>/<name>/total`, `wifi_rssi`, `batteryVoltage`
 - Subscribe: `<main>/<name>/settings/total` (set counter), `waitForOTA`, `voltageCalibration`
 
+## Network / Infrastructure
+
+- **Home MQTT broker:** `192.168.4.79` (Tobias' Heimnetz)
+- **Heiko's MQTT broker:** `192.168.4.27` (Heiko's Heimnetz), user: `heiko`, password: `heikog`
+- **Heiko's WiFi:** `WLAN-074425`
+- **Heiko's device (new Wemos):** Static IP `192.168.4.87`, topic `haus/gasmeter`
+- **Test device (old Wemos, MAC 4c:75:25:19:1c:2d):** Static IP `192.168.4.88`, topic `haus/gasmeter_test`
+
 ## Configuration Flags
 
 In `config.h`:
